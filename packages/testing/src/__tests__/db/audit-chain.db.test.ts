@@ -6,7 +6,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { appendAudit, AuditEntryError } from '@hsp/db';
 import { newId } from '@hsp/kernel';
-import { createTestDatabase, sqlState, type TestDatabase } from '../../db-harness.ts';
+import { createTestDatabase, type TestDatabase } from '../../db-harness.ts';
 
 let db: TestDatabase;
 let api: pg.Pool;
@@ -101,6 +101,6 @@ describe('audit hash chain', () => {
   });
 
   it('append-only still holds for the owner', async () => {
-    expect(await sqlState(db.migrator, "UPDATE compliance.audit_logs SET outcome = 'FAILED'")).toBe('HS001');
+    await expect(db.migrator.query("UPDATE compliance.audit_logs SET outcome = 'FAILED'")).rejects.toMatchObject({ code: 'HS001' });
   });
 });

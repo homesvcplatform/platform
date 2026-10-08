@@ -13,6 +13,8 @@ import { createTestDatabase, type TestDatabase } from '@hsp/testing';
 import { composeApi, type ApiComposition } from '../bootstrap.ts';
 
 export const ORIGIN = 'https://app.test.invalid';
+/** The process environment the adapters' no-production guards check (Vitest itself adds DEV / PROD / MODE to process.env). */
+export const TEST_ENV = { APP_ENV: 'test' } as const;
 export const ISSUER = 'https://auth.test.invalid';
 
 export interface ApiHarness {
@@ -34,11 +36,11 @@ export interface ApiHarness {
 export async function createApiHarness(opts: { rateLimitStore?: RateLimitStore; botTokens?: string[] } = {}): Promise<ApiHarness> {
   const db = await createTestDatabase();
   const clock = new ManualClock(new Date());
-  const sms = createFakeSms();
+  const sms = createFakeSms(TEST_ENV);
   const logs: string[] = [];
   const logger = createLogger('hsp-api-test', 'debug', (l) => logs.push(l), () => clock.now());
-  const keyring = createEphemeralKeyring();
-  const signing = createLocalTokenSigningKey(`k-${randomUUID().slice(0, 8)}`);
+  const keyring = createEphemeralKeyring(TEST_ENV);
+  const signing = createLocalTokenSigningKey(`k-${randomUUID().slice(0, 8)}`, TEST_ENV);
   const keys: IdentityKeys = { otpPepper: randomBytes(32), blindIndexPepper: randomBytes(32), refreshRotationKey: randomBytes(32), csrfKey: randomBytes(32), requestHashKey: randomBytes(32) };
   const technicians = new Set<string>();
   const pools: pg.Pool[] = [];

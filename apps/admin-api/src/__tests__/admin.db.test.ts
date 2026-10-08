@@ -87,11 +87,12 @@ async function registerPasskey(s: AdminSession): Promise<SoftAuthenticator> {
 beforeAll(async () => {
   db = await createTestDatabase();
   pool = new pg.Pool({ connectionString: await db.loginFor('app_admin'), max: 5 });
-  const signing = createLocalTokenSigningKey('k-admin-test');
+  const env = { APP_ENV: 'test' }; // Vitest adds DEV / PROD / MODE to process.env; the adapters' guards check the app env
+  const signing = createLocalTokenSigningKey('k-admin-test', env);
   app = composeAdminApi({
     pool, clock, logger: createLogger('hsp-admin-test', 'debug', (l) => logs.push(l), () => clock.now()), idp: idp.config,
     webauthn: { rpId: RP_ID, origin: ORIGIN }, csrfKey: randomBytes(32), requestHashKey: randomBytes(32), allowedOrigins: [ORIGIN],
-    identity: { kms: createEphemeralKeyring().forRole('admin-api'), keys: { otpPepper: randomBytes(32), blindIndexPepper: randomBytes(32),
+    identity: { kms: createEphemeralKeyring(env).forRole('admin-api'), keys: { otpPepper: randomBytes(32), blindIndexPepper: randomBytes(32),
       refreshRotationKey: randomBytes(32), csrfKey: randomBytes(32), requestHashKey: randomBytes(32) }, tokenSigner: signing.signer,
       tokenVerificationKeys: signing.publicKeys, issuer: 'https://auth.test.invalid' },
   });
