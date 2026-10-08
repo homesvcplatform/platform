@@ -1,0 +1,10 @@
+{
+  "name": "@hsp/app-web-bff",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Customer PWA + field-agent web + BFF (Next.js). Framework introduced at Gate 3 (BFF sessions) / Gate 8 (PWA).",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

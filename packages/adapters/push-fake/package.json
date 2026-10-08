@@ -1,0 +1,13 @@
+{
+  "name": "@hsp/adapter-push-fake",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Adapter \"push-fake\". Implements ports from module public entries only (B9). Fake/sandbox only in Phase 2.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

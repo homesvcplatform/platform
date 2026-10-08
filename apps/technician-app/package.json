@@ -1,0 +1,10 @@
+{
+  "name": "@hsp/app-technician-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Technician Android app (React Native/Expo) — BLOCKED on Spike S-2 (ADR-004 decision) before Gate 9.",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "@hsp/module-benefits",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bounded module \"benefits\" (Postgres schema \"benefits\"). Only ./ (public) and ./http are importable (B1).",
+  "exports": {
+    ".": "./src/public/index.ts",
+    "./http": "./src/http/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

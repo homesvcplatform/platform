@@ -1,0 +1,13 @@
+{
+  "name": "@hsp/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Zod DTOs per API surface (client-safe subset).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

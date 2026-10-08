@@ -1,0 +1,13 @@
+{
+  "name": "@hsp/money",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Paise type, basis-point maths, largest-remainder split, INR formatting (Gate 6).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

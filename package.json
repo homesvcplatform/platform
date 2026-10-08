@@ -1,0 +1,32 @@
+{
+  "name": "hsp-platform",
+  "private": true,
+  "description": "Home-services platform monorepo (neutral technical namespace per ADR-021). Phase 2 Gate 1 foundation.",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=24.0.0 <25.0.0",
+    "pnpm": "10.34.5"
+  },
+  "type": "module",
+  "scripts": {
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "turbo run typecheck --output-logs=errors-only && tsc -p tsconfig.json",
+    "test": "vitest run",
+    "arch": "depcruise --config .dependency-cruiser.cjs --output-type err-long apps packages",
+    "guard:no-prod": "node tools/guardrails/check-no-prod.mjs",
+    "guard:workspace": "node tools/architecture/check-workspace.mjs",
+    "ci": "pnpm run guard:no-prod && pnpm run guard:workspace && pnpm run lint && pnpm run typecheck && pnpm run arch && pnpm run test"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.13.6",
+    "dependency-cruiser": "18.4.0",
+    "eslint": "10.11.0",
+    "globals": "17.12.0",
+    "turbo": "2.11.3",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.1",
+    "vite": "8.3.0",
+    "vitest": "5.0.1"
+  }
+}

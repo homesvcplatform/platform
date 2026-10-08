@@ -1,0 +1,13 @@
+{
+  "name": "@hsp/security",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Field crypto, blind indexes, signing, hashing (Gate 3).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

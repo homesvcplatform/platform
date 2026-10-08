@@ -1,0 +1,13 @@
+{
+  "name": "@hsp/errors",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Domain error taxonomy and problem+json mapping (Gate 3).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

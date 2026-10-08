@@ -1,0 +1,8 @@
+# Checkov configuration (iac job). Any skip must be an inline `#checkov:skip=<ID>:<justification>` next to the resource.
+framework:
+  - terraform
+compact: true
+quiet: true
+download-external-modules: false
+skip-path:
+  - .selftest

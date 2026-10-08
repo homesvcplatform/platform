@@ -1,0 +1,9 @@
+# gitleaks configuration: default ruleset plus project allowlist. Blocking in CI (secrets-scan job).
+title = "hsp gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "pnpm lockfile integrity hashes are content checksums, not secrets"
+paths = ['''(^|/)pnpm-lock\.yaml$''']

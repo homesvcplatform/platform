@@ -1,0 +1,13 @@
+{
+  "name": "@hsp/policy",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Authorization engine and policy registry (Gate 3).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

@@ -1,0 +1,67 @@
+# Deploy to dev/test only (there is no production environment in Phase 2).
+# SR-16: the only path that can register ECS task definitions. It refuses any image that is not referenced
+# by digest AND keyless-signed by this repository's CI workflow on main AND carries a CycloneDX SBOM attestation.
+# Account-level enforcement (only this role may register task definitions) is in infra/org (SCP).
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Target environment
+        type: choice
+        options: [dev, test]
+        required: true
+      image_digest:
+        description: Image digest to deploy (sha256:...)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: ${{ inputs.target }} # GitHub environment protection rules (reviewers) apply
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate inputs
+        env:
+          DIGEST: ${{ inputs.image_digest }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::image_digest must be sha256:<64 hex>"; exit 1; }
+          [[ "$TARGET" == "dev" || "$TARGET" == "test" ]] || { echo "::error::only dev/test exist in Phase 2"; exit 1; }
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-south-1
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Verify signature + SBOM attestation (refuses unsigned images)
+        env:
+          ECR_REPOSITORY_URI: ${{ vars.ECR_REPOSITORY_URI }}
+          DIGEST: ${{ inputs.image_digest }}
+        run: tools/deploy/verify-image.sh "$ECR_REPOSITORY_URI@$DIGEST"
+      - name: Register task definitions for all process roles
+        env:
+          TARGET: ${{ inputs.target }}
+          DIGEST: ${{ inputs.image_digest }}
+          ECR_REPOSITORY_URI: ${{ vars.ECR_REPOSITORY_URI }}
+          AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+          TASK_EXECUTION_ROLE_ARN: ${{ vars.TASK_EXECUTION_ROLE_ARN }}
+        run: |
+          for role in api admin-api webhook voice worker scheduler media-scanner; do
+            node tools/deploy/render-task-definition.mjs "$TARGET" "$role" "$ECR_REPOSITORY_URI@$DIGEST" > "$RUNNER_TEMP/td-$role.json"
+            aws ecs register-task-definition --cli-input-json "file://$RUNNER_TEMP/td-$role.json" --query 'taskDefinition.taskDefinitionArn' --output text
+          done
+          echo "Task definitions registered. ECS services are introduced at Gate 3 (no services exist yet)." >> "$GITHUB_STEP_SUMMARY"

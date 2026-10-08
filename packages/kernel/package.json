@@ -1,0 +1,17 @@
+{
+  "name": "@hsp/kernel",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "IDs, clock, config schema loading, environment guardrails, role runtime bootstrap.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "4.6.5",
+    "@hsp/observability": "workspace:*"
+  }
+}

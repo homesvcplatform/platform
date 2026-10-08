@@ -1,0 +1,7 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "packages/modules/*"
+  - "packages/adapters/*"
+# pnpm 10 blocks dependency lifecycle scripts by default; keep the allowlist explicit and empty.
+onlyBuiltDependencies: []

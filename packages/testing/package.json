@@ -1,0 +1,13 @@
+{
+  "name": "@hsp/testing",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Factories, fixtures, fakes and test harnesses (test-only).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

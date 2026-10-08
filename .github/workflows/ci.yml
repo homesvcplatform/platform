@@ -1,0 +1,260 @@
+# Gate 1 CI. Every job below is a required status check on main (see .github/rulesets/main-protection.json).
+# All third-party actions are pinned to full commit SHAs; scanner images are pinned to exact versions.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TURBO_TELEMETRY_DISABLED: "1"
+  GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1
+  OSV_IMAGE: ghcr.io/google/osv-scanner:v2.6.0
+  SEMGREP_VERSION: "1.180.0"
+  TRIVY_VERSION: v0.75.0
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install (frozen lockfile, no dependency lifecycle scripts)
+        run: pnpm install --frozen-lockfile
+      - name: Guardrails, lint, strict typecheck, architecture boundaries, tests
+        run: pnpm run ci
+
+  secrets-scan:
+    name: secrets-scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: gitleaks (full git history, blocking)
+        run: docker run --rm -v "$PWD:/repo" "$GITLEAKS_IMAGE" git /repo --config /repo/.gitleaks.toml --redact --verbose --exit-code 1
+      - name: Self-test - a planted fake secret MUST be detected
+        run: |
+          mkdir -p "$RUNNER_TEMP/planted"
+          # Built at runtime so no secret-shaped string is ever committed.
+          suffix=$(tr -dc 'A-Z0-9' < /dev/urandom | head -c 16)
+          pat=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 36)
+          printf 'aws_access_key_id = "AKIA%s"\ngithub_token = "ghp_%s"\n' "$suffix" "$pat" > "$RUNNER_TEMP/planted/config.env"
+          if docker run --rm -v "$RUNNER_TEMP/planted:/scan" "$GITLEAKS_IMAGE" dir /scan --redact --exit-code 1; then
+            echo "::error::gitleaks did not detect the planted secret - the control is broken"; exit 1
+          fi
+          echo "Planted secret detected as expected."
+
+  sast:
+    name: sast
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      image: semgrep/semgrep:1.180.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Semgrep (registry default ruleset + project rules, blocking)
+        run: semgrep scan --config p/default --config .semgrep/rules.yml --error --metrics=off --exclude docs
+      - name: Self-test - planted insecure code MUST be flagged
+        run: |
+          mkdir -p "$RUNNER_TEMP/semgrep-selftest"
+          cat > "$RUNNER_TEMP/semgrep-selftest/planted.tsx" <<'EOF'
+          export const View = (p: { html: string }) => <div dangerouslySetInnerHTML={{ __html: p.html }} />;
+          export const otp = () => String(Math.floor(Math.random() * 1000000));
+          export const q = (db: any, id: string) => db.execute(sql.raw(`select * from t where id = '${id}'`));
+          EOF
+          if semgrep scan --config .semgrep/rules.yml --error --metrics=off "$RUNNER_TEMP/semgrep-selftest"; then
+            echo "::error::Semgrep did not flag the planted insecure code - the control is broken"; exit 1
+          fi
+          echo "Planted insecure code flagged as expected."
+
+  sca:
+    name: sca
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: OSV-Scanner on pnpm-lock.yaml (blocking on known vulnerabilities)
+        run: docker run --rm -v "$PWD:/src" "$OSV_IMAGE" scan source --recursive /src
+
+  iac:
+    name: iac
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.5
+      - name: terraform fmt
+        run: terraform fmt -check -recursive infra
+      - name: terraform validate (dev, test, org guardrails)
+        run: |
+          for dir in infra/envs/dev infra/envs/test infra/org; do
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate
+          done
+      - name: Checkov (blocking)
+        uses: bridgecrewio/checkov-action@c13aafd679d3814a25067d10fcaf98c4f7594931 # v12.3131.0
+        with:
+          directory: infra
+          framework: terraform
+          config_file: .checkov.yaml
+          soft_fail: false
+      - name: Prepare self-test fixture (insecure Terraform, generated, never committed)
+        run: |
+          mkdir -p .selftest/insecure-tf
+          cat > .selftest/insecure-tf/main.tf <<'EOF'
+          resource "aws_s3_bucket" "planted" { bucket = "planted-public-bucket" }
+          resource "aws_s3_bucket_public_access_block" "planted" {
+            bucket                  = aws_s3_bucket.planted.id
+            block_public_acls       = false
+            block_public_policy     = false
+            ignore_public_acls      = false
+            restrict_public_buckets = false
+          }
+          resource "aws_security_group" "planted" {
+            ingress {
+              from_port   = 22
+              to_port     = 22
+              protocol    = "tcp"
+              cidr_blocks = ["0.0.0.0/0"]
+            }
+          }
+          EOF
+      - name: Self-test - Checkov MUST fail the insecure fixture
+        id: checkov_selftest
+        uses: bridgecrewio/checkov-action@c13aafd679d3814a25067d10fcaf98c4f7594931 # v12.3131.0
+        with:
+          directory: .selftest/insecure-tf
+          framework: terraform
+          soft_fail: true
+          output_format: json
+          output_file_path: .selftest
+      - name: Assert the self-test produced failures
+        run: |
+          failed=$(grep -o '"failed": *[0-9]*' .selftest/results_json.json | head -1 | grep -o '[0-9]*$')
+          if [ -z "$failed" ] || [ "$failed" -eq 0 ]; then echo "::error::Checkov reported no failures for the insecure fixture"; exit 1; fi
+          echo "Checkov flagged $failed failed checks on the insecure fixture as expected."
+
+  image:
+    name: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: [verify]
+    permissions:
+      contents: read
+      id-token: write # keyless signing + AWS OIDC (only used on main when AWS is configured)
+    env:
+      LOCAL_TAG: hsp-backend:${{ github.sha }}
+      AWS_CONFIGURED: ${{ vars.AWS_CI_ROLE_ARN != '' && vars.ECR_REPOSITORY_URI != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build backend image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          push: false
+          platforms: linux/amd64
+          tags: ${{ env.LOCAL_TAG }}
+          provenance: false
+      - name: Trivy image scan (HIGH/CRITICAL with fixes available block)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: ${{ env.LOCAL_TAG }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          scanners: vuln,secret,misconfig
+      - name: SBOM (CycloneDX)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ env.LOCAL_TAG }}
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+          upload-artifact: true
+      - name: AWS credentials via OIDC (main only, AWS configured)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && env.AWS_CONFIGURED == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: ap-south-1
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && env.AWS_CONFIGURED == 'true'
+      - name: Push by digest, keyless-sign and attach SBOM attestation
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && env.AWS_CONFIGURED == 'true'
+        env:
+          ECR_REPOSITORY_URI: ${{ vars.ECR_REPOSITORY_URI }}
+        run: |
+          aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin "${ECR_REPOSITORY_URI%%/*}"
+          docker tag "$LOCAL_TAG" "$ECR_REPOSITORY_URI:$GITHUB_SHA"
+          docker push "$ECR_REPOSITORY_URI:$GITHUB_SHA"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$ECR_REPOSITORY_URI:$GITHUB_SHA" | cut -d@ -f2)
+          cosign sign --yes "$ECR_REPOSITORY_URI@$digest"
+          cosign attest --yes --type cyclonedx --predicate sbom.cdx.json "$ECR_REPOSITORY_URI@$digest"
+          echo "### Signed image" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$ECR_REPOSITORY_URI@$digest\`" >> "$GITHUB_STEP_SUMMARY"
+      - name: Note when signing is not configured yet
+        if: env.AWS_CONFIGURED != 'true'
+        run: echo "::notice::AWS/ECR not configured - image was built, scanned and SBOM'd but not pushed or signed. Deploys remain impossible (deploy.yml requires a signature)."
+
+  supply-chain-selftest:
+    name: supply-chain-selftest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: [image]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.AWS_CI_ROLE_ARN != '' && vars.ECR_REPOSITORY_URI != ''
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: ap-south-1
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: An UNSIGNED image MUST be refused by the deploy verifier
+        env:
+          ECR_REPOSITORY_URI: ${{ vars.ECR_REPOSITORY_URI }}
+        run: |
+          aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin "${ECR_REPOSITORY_URI%%/*}"
+          printf 'FROM scratch\nLABEL purpose=unsigned-selftest\n' | docker build -t "$ECR_REPOSITORY_URI:selftest-unsigned-$GITHUB_SHA" -
+          docker push "$ECR_REPOSITORY_URI:selftest-unsigned-$GITHUB_SHA"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$ECR_REPOSITORY_URI:selftest-unsigned-$GITHUB_SHA" | cut -d@ -f2)
+          if tools/deploy/verify-image.sh "$ECR_REPOSITORY_URI@$digest"; then
+            echo "::error::Unsigned image passed verification - the deploy control is broken"; exit 1
+          fi
+          echo "Unsigned image refused as expected."

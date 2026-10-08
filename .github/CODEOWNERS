@@ -1,0 +1,19 @@
+# Owners (GitHub teams in the neutral "homesvcplatform" organisation; ADR-021). Founder action: create these teams.
+# Sensitive paths additionally require TWO approvals (sensitive-paths-review.yml), per Phase 2 / 02 §5.
+*                                         @homesvcplatform/engineering
+
+/packages/modules/identity/               @homesvcplatform/platform-leads @homesvcplatform/security
+/packages/modules/backoffice/             @homesvcplatform/platform-leads @homesvcplatform/security
+/packages/modules/payments/               @homesvcplatform/platform-leads @homesvcplatform/payments
+/packages/modules/pricing/                @homesvcplatform/platform-leads @homesvcplatform/payments
+/packages/modules/compliance/             @homesvcplatform/platform-leads @homesvcplatform/security
+/packages/modules/voice/                  @homesvcplatform/platform-leads @homesvcplatform/voice
+/packages/security/                       @homesvcplatform/security
+/packages/policy/                         @homesvcplatform/security
+/db/migrations/                           @homesvcplatform/platform-leads
+/infra/                                   @homesvcplatform/platform-leads @homesvcplatform/security
+/.github/                                 @homesvcplatform/platform-leads @homesvcplatform/security
+/tools/deploy/                            @homesvcplatform/platform-leads @homesvcplatform/security
+/tools/architecture/                      @homesvcplatform/platform-leads
+/.dependency-cruiser.cjs                  @homesvcplatform/platform-leads
+/Dockerfile                               @homesvcplatform/platform-leads @homesvcplatform/security

@@ -1,0 +1,13 @@
+{
+  "name": "@hsp/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Connection pools per process role, query tagging, unit of work (Gate 2).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

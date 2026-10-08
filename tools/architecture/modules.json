@@ -1,0 +1,36 @@
+{
+  "$comment": "Single source of truth for bounded modules, their Postgres schema and allowed compile-time (facade/port) dependencies. Source: docs/phase-1/01-architecture.md §4.3, amended by ADR-022 (TCP ports owned by jobs; identity uses an OtpSender port instead of importing comms). Events never create compile-time dependencies.",
+  "modules": {
+    "config":       { "schema": "config",       "allowedDeps": [] },
+    "geo":          { "schema": "geo",          "allowedDeps": [] },
+    "catalog":      { "schema": "catalog",      "allowedDeps": [] },
+    "files":        { "schema": "files",        "allowedDeps": [] },
+    "compliance":   { "schema": "compliance",   "allowedDeps": [] },
+    "backoffice":   { "schema": "backoffice",   "allowedDeps": [] },
+    "benefits":     { "schema": "benefits",     "allowedDeps": [] },
+    "identity":     { "schema": "identity",     "allowedDeps": ["config"] },
+    "customers":    { "schema": "customers",    "allowedDeps": ["identity", "geo", "compliance"] },
+    "verification": { "schema": "verification", "allowedDeps": ["files", "identity", "compliance"] },
+    "workforce":    { "schema": "workforce",    "allowedDeps": ["identity", "geo", "catalog", "verification", "compliance"] },
+    "pricing":      { "schema": "pricing",      "allowedDeps": ["catalog", "backoffice"] },
+    "jobs":         { "schema": "jobs",         "allowedDeps": ["customers", "catalog", "pricing", "geo", "compliance"] },
+    "diagnosis":    { "schema": "diagnosis",    "allowedDeps": ["jobs", "pricing", "catalog", "files"] },
+    "matching":     { "schema": "matching",     "allowedDeps": ["workforce", "geo", "trust", "jobs", "pricing"] },
+    "payments":     { "schema": "payments",     "allowedDeps": ["diagnosis", "pricing", "workforce", "backoffice", "jobs"] },
+    "warranty":     { "schema": "warranty",     "allowedDeps": ["jobs", "diagnosis", "catalog"] },
+    "trust":        { "schema": "trust",        "allowedDeps": ["jobs", "customers", "workforce", "payments"] },
+    "voice":        { "schema": "voice",        "allowedDeps": ["jobs", "matching", "diagnosis", "workforce", "identity", "trust", "payments"] },
+    "comms":        { "schema": "comms",        "allowedDeps": ["identity", "customers", "workforce", "config"] },
+    "ai":           { "schema": "ai",           "allowedDeps": ["files", "config"] }
+  },
+  "transactionalCouplingPoints": [
+    { "id": "TCP-1", "caller": "matching", "callee": "jobs",      "operation": "assignVisit",          "mechanism": "facade call (matching depends on jobs)" },
+    { "id": "TCP-2", "caller": "jobs",     "callee": "diagnosis", "operation": "recordMaterialUsage",  "mechanism": "port MaterialUsageRecorder declared in jobs/public, implemented by diagnosis (ADR-022)" },
+    { "id": "TCP-3", "caller": "jobs",     "callee": "payments",  "operation": "issueBill",            "mechanism": "port BillIssuer declared in jobs/public, implemented by payments (ADR-022)" }
+  ],
+  "sharedPackages": ["kernel", "money", "errors", "events", "policy", "observability", "security", "localization", "db", "contracts", "design-tokens", "ui-web", "ui-native", "testing"],
+  "frontendAllowedPackages": ["contracts", "design-tokens", "ui-web", "ui-native", "localization", "money"],
+  "backendApps": ["api", "admin-api", "webhook", "voice", "worker", "scheduler", "media-scanner"],
+  "frontendApps": ["web-bff", "admin-web", "technician-app"],
+  "adapters": ["telephony-simulator", "sms-fake", "whatsapp-fake", "push-fake", "maps-fake", "kyc-fake", "ai-fake", "kms-local"]
+}

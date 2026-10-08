@@ -1,0 +1,14 @@
+{
+  "name": "@hsp/module-backoffice",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bounded module \"backoffice\" (Postgres schema \"backoffice\"). Only ./ (public) and ./http are importable (B1).",
+  "exports": {
+    ".": "./src/public/index.ts",
+    "./http": "./src/http/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@hsp/app-admin-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Admin console SPA (React + Vite), served only by admin-api behind the zero-trust proxy. Introduced at Gate 3/8.",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

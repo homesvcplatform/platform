@@ -1,0 +1,13 @@
+{
+  "name": "@hsp/events",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Event envelope, schema registry, outbox writer (Gate 2/5).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

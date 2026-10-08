@@ -1,0 +1,20 @@
+node_modules/
+.turbo/
+coverage/
+dist/
+*.log
+.DS_Store
+# secrets & local config: never committed (B8)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.tfvars
+!*.tfvars.example
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+.tools/
+sbom*.json

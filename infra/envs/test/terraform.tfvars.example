@@ -1,0 +1,3 @@
+# Copy to terraform.tfvars (git-ignored). Non-production account only.
+account_id        = "000000000000"
+github_repository = "homesvcplatform/platform"

@@ -1,0 +1,41 @@
+# Project Semgrep rules (Phase 2 / 02 §1 security tooling; Phase 1 14 §4 custom rules).
+rules:
+  - id: hsp-no-dangerously-set-inner-html
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: dangerouslySetInnerHTML is banned (XSS). Render user content as text.
+    pattern-either:
+      - pattern: <$EL dangerouslySetInnerHTML={...} />
+      - pattern: <$EL dangerouslySetInnerHTML={...}>...</$EL>
+      - pattern: "{dangerouslySetInnerHTML: ...}"
+  - id: hsp-no-math-random
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Math.random() is not cryptographically secure. Use crypto.randomInt / crypto.randomUUID (codes, OTPs, IDs).
+    pattern: Math.random()
+  - id: hsp-no-sql-raw
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: sql.raw() bypasses parameterisation (SQL injection). Use the query builder or sql`` with bound parameters.
+    pattern: sql.raw(...)
+  - id: hsp-no-eval
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Dynamic code evaluation is banned.
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+  - id: hsp-no-tls-verification-bypass
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Disabling TLS verification is banned.
+    pattern-either:
+      - pattern: "{rejectUnauthorized: false}"
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+  - id: hsp-no-production-app-env
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Phase 2 has no production environment.
+    pattern-regex: APP_ENV\s*[:=]\s*['"](prod|production|live)['"]
+    paths:
+      exclude: ["**/__tests__/**", "**/*.test.ts"]
