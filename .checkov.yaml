@@ -1,8 +1,8 @@
 # Checkov configuration (iac job). Any skip must be an inline `#checkov:skip=<ID>:<justification>` next to the resource.
+# Checkov also auto-loads this file for the self-test run (cwd = repo root), so it must NOT skip the generated
+# .selftest fixture: a skip-path there would hide the planted insecure Terraform and make the self-test meaningless.
 framework:
   - terraform
 compact: true
 quiet: true
 download-external-modules: false
-skip-path:
-  - .selftest
