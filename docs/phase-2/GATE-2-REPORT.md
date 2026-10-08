@@ -61,7 +61,7 @@ G-5 (per-process grants, worker-only ledger writes) · G-7 (key-subject registry
 ## 6. Conditions (why PASS WITH CONDITIONS)
 1. **Managed-database verification (TE-02 restriction 8):** re-run the migrations, the grant matrix and all DB tests against the managed PostgreSQL 17 (RDS) when AWS resumes under TE-01, and adopt pg_partman / pgaudit there. Until then Gate 2 stays PASS WITH CONDITIONS.
 2. **ADR-023 acceptance** by the founder (it is Proposed with this review).
-3. **ADR-023 #9 open item:** `app_voice` can't issue the TCP-3 bill under the literal 03 §12.1 grants. The founder decides by Gate 10/11: either grant `app_voice` INSERT on `payments.bills` / `bill_lines`, or route IVR completion through `api`. Either answer is a forward-fix migration.
+3. **ADR-023 #9 (decided 2026-10-09, least privilege):** `app_voice` gets no direct permission to create bills. IVR-driven completions go through the authorized API / service path, which issues the bill. The current grants already fit this decision (no migration). The routing itself is built at Gate 10/11.
 4. Gate 1 conditions are unchanged: G7 is interim (TE-03), G8 / G9 are pending, and the AWS proofs are deferred (TE-01).
 
 ## 7. Decision
