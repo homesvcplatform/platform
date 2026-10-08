@@ -15,7 +15,11 @@
     "arch": "depcruise --config .dependency-cruiser.cjs --output-type err-long apps packages",
     "guard:no-prod": "node tools/guardrails/check-no-prod.mjs",
     "guard:workspace": "node tools/architecture/check-workspace.mjs",
-    "ci": "pnpm run guard:no-prod && pnpm run guard:workspace && pnpm run lint && pnpm run typecheck && pnpm run arch && pnpm run test"
+    "ci": "pnpm run guard:no-prod && pnpm run guard:workspace && pnpm run guard:sql-ownership && pnpm run lint && pnpm run typecheck && pnpm run arch && pnpm run test",
+    "test:db": "vitest run --config vitest.db.config.ts",
+    "db:migrate": "node packages/db/src/cli/migrate.ts",
+    "db:seed": "node packages/testing/src/seed/cli.ts",
+    "guard:sql-ownership": "node tools/architecture/check-sql-ownership.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

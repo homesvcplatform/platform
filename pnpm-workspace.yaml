@@ -12,3 +12,8 @@ onlyBuiltDependencies: []
 minimumReleaseAge: 10080
 trustPolicy: no-downgrade
 blockExoticSubdeps: true
+# Transitive pin (Gate 2): vite 8.3.0 accepts rolldown ~1.2.6. The Gate 1 lockfile had resolved rolldown 1.2.13,
+# published one day earlier, which violates ADR-022 #3 (versions >= 2 weeks old) and minimumReleaseAge above.
+# 1.2.11 (2026-09-24) satisfies both. Remove when Dependabot proposes a mature vite/rolldown pair.
+overrides:
+  rolldown: 1.2.11

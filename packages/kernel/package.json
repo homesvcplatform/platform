@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "zod": "4.6.5",
-    "@hsp/observability": "workspace:*"
+    "@hsp/observability": "workspace:*",
+    "uuid": "14.0.2"
   }
 }

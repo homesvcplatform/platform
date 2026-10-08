@@ -9,5 +9,12 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "pg": "8.23.0",
+    "@hsp/kernel": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1"
   }
 }
