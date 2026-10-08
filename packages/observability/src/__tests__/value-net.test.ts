@@ -2,8 +2,12 @@
 import { describe, expect, it } from 'vitest';
 import { createLogger, isValueSafe } from '../index.ts';
 
+/** A JWT-shaped value built at runtime (header.payload.signature), so no token literal sits in the source. */
+const segment = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
+const fakeJwt = `${segment({ alg: 'ES256', typ: 'JWT' })}.${segment({ sub: 'synthetic-user' })}.${'s'.repeat(10)}`;
+
 describe('value safety net', () => {
-  it.each(['+91 00000 99871', '+910000099871', '9876543210', '482913', 'eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJ1MSJ9.sig', 'a'.repeat(43),
+  it.each(['+91 00000 99871', '+910000099871', '9876543210', '482913', fakeJwt, 'a'.repeat(43),
     'someone@example.invalid', 'x'.repeat(201)])('drops suspicious value %s', (value) => {
     expect(isValueSafe(value)).toBe(false);
   });
