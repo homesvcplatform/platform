@@ -1,4 +1,4 @@
-# Gate 1 CI. Every job below is a required status check on main (see .github/rulesets/main-protection.json).
+# Gate 1/2 CI. Every job below is a required status check on main (see .github/rulesets/main-protection.json).
 # All third-party actions are pinned to full commit SHAs; scanner images are pinned to exact versions.
 name: CI
 
@@ -21,12 +21,29 @@ env:
   OSV_IMAGE: ghcr.io/google/osv-scanner:v2.6.0
   SEMGREP_VERSION: "1.180.0"
   TRIVY_VERSION: v0.75.0
+  # Gate 2: migration linter (release binary, verified by SHA-256 before use) and the throwaway DB image (pinned by digest).
+  SQUAWK_VERSION: v2.65.0
+  SQUAWK_SHA256: 9b7b2b9529a469647e32c6346e8d5a8a760857cbe2ee94ccb37f60e408babffb
 
 jobs:
   verify:
     name: verify
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
+    # Throwaway PostgreSQL 17 + PostGIS 3.5 for the Gate 2 database tests (TE-02: CI only, synthetic data, destroyed
+    # with the job). The password is per-run and protects nothing outside this runner.
+    services:
+      postgres:
+        image: postgis/postgis:17-3.5@sha256:01a6a70e41e6c4467c8f55f6063555ed72db2d6662cd0d571040d42eadaeb6f6
+        env:
+          POSTGRES_PASSWORD: ci-run-${{ github.run_id }}-${{ github.run_attempt }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,6 +57,16 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Guardrails, lint, strict typecheck, architecture boundaries, tests
         run: pnpm run ci
+      - name: Lint migrations (squawk)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/squawk" "https://github.com/sbdchd/squawk/releases/download/${SQUAWK_VERSION}/squawk-linux-x64"
+          echo "${SQUAWK_SHA256}  $RUNNER_TEMP/squawk" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/squawk"
+          "$RUNNER_TEMP/squawk" --config .squawk.toml db/migrations/*.sql
+      - name: Database tests (migrations, grants, invariants, append-only, classification, partitions, seed)
+        env:
+          HSP_TEST_DB_ADMIN_URL: postgres://postgres:ci-run-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/postgres
+        run: pnpm run test:db
 
   secrets-scan:
     name: secrets-scan

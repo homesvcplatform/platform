@@ -1,0 +1,13 @@
+# Migration linter configuration (Phase 1 03 §14.7). Every exclusion is justified; all other rules block CI.
+pg_version = "17.0"
+# The runner executes each migration file in its own transaction (packages/db/src/migrate.ts).
+assume_in_transaction = true
+excluded_rules = [
+  # currency char(3): ISO 4217 codes are fixed-length by definition and the schema also CHECKs the value (Phase 1 03 §1).
+  "ban-char-field",
+  # int / smallint are used deliberately for bounded domains (versions, counters, bps, line numbers); money is bigint.
+  "prefer-bigint-over-int",
+  "prefer-bigint-over-smallint",
+  # Forward-only migrations run exactly once under a checksum ledger; IF NOT EXISTS would hide drift instead of failing.
+  "prefer-robust-stmts",
+]

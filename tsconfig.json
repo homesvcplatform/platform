@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": ["tools/**/*.ts", "vitest.config.ts", "eslint.config.js"],
+  "include": ["tools/**/*.ts", "vitest.config.ts", "vitest.db.config.ts", "eslint.config.js"],
   "compilerOptions": { "allowJs": true, "checkJs": false }
 }
