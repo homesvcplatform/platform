@@ -1,6 +1,6 @@
-# GitHub OIDC trust for CI (build/push) and deploy roles - no long-lived AWS keys anywhere (Phase 1 14 §2.5).
-# The build role can only push to the backend ECR repository from main. The deploy role can only register
-# task definitions / update services in this cluster, only from the matching GitHub environment.
+# GitHub OIDC trust for the per-environment deploy role - no long-lived AWS keys anywhere (Phase 1 14 §2.5).
+# The deploy role can only register task definitions / update services in this cluster, only from the matching
+# GitHub environment. The CI build (push) role lives in the shared-services account (infra/modules/ci-build, I-2).
 terraform {
   required_providers {
     aws = { source = "hashicorp/aws" }
@@ -17,8 +17,10 @@ variable "create_oidc_provider" {
   type    = bool
   default = true
 }
-variable "ecr_repository_arn" { type = string }
-variable "ecr_kms_key_arn" { type = string }
+variable "ecr_kms_key_arn" {
+  type        = string
+  description = "Shared registry KMS key (shared-services account). The deploy role decrypts image layers for verification."
+}
 variable "cluster_arn" { type = string }
 variable "execution_role_arn" { type = string }
 variable "task_role_arns" { type = map(string) }
@@ -34,55 +36,6 @@ resource "aws_iam_openid_connect_provider" "github" {
 
 locals {
   oidc_provider_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
-}
-
-data "aws_iam_policy_document" "ci_assume" {
-  statement {
-    actions = ["sts:AssumeRoleWithWebIdentity"]
-    principals {
-      type        = "Federated"
-      identifiers = [local.oidc_provider_arn]
-    }
-    condition {
-      test     = "StringEquals"
-      variable = "token.actions.githubusercontent.com:aud"
-      values   = ["sts.amazonaws.com"]
-    }
-    condition {
-      test     = "StringEquals"
-      variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:ref:refs/heads/main"]
-    }
-  }
-}
-
-resource "aws_iam_role" "ci_build" {
-  name                 = "${var.name_prefix}-ci-build"
-  assume_role_policy   = data.aws_iam_policy_document.ci_assume.json
-  max_session_duration = 3600
-}
-
-data "aws_iam_policy_document" "ci_build" {
-  statement {
-    actions   = ["ecr:GetAuthorizationToken"]
-    resources = ["*"] # GetAuthorizationToken does not support resource-level permissions.
-  }
-  statement {
-    actions = [
-      "ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload",
-      "ecr:PutImage", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:DescribeImages",
-    ]
-    resources = [var.ecr_repository_arn]
-  }
-  statement {
-    actions   = ["kms:GenerateDataKey", "kms:Decrypt"]
-    resources = [var.ecr_kms_key_arn]
-  }
-}
-
-resource "aws_iam_role_policy" "ci_build" {
-  role   = aws_iam_role.ci_build.id
-  policy = data.aws_iam_policy_document.ci_build.json
 }
 
 data "aws_iam_policy_document" "deploy_assume" {
@@ -150,5 +103,4 @@ resource "aws_iam_role_policy" "deploy" {
   policy = data.aws_iam_policy_document.deploy.json
 }
 
-output "ci_build_role_arn" { value = aws_iam_role.ci_build.arn }
 output "deploy_role_arn" { value = aws_iam_role.deploy.arn }

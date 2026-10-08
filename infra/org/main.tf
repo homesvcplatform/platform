@@ -1,7 +1,8 @@
 # Organisation-level guardrails (Service Control Policies), applied from the AWS Organizations management account
-# by a founder/security admin (Phase 1 14 §2.1, SR-16). Attach to the Workloads OU containing dev/test accounts.
+# by a founder/security admin (Phase 1 14 §2.1, SR-16). All three SCPs attach to the Workloads OU (dev/test).
+# The region and security baselines also attach to the Infrastructure OU (shared-services account, Gate 1 I-6).
 terraform {
-  required_version = ">= 1.9.0"
+  required_version = ">= 1.10.0"
   required_providers {
     aws = { source = "hashicorp/aws", version = "~> 6.66" }
   }
@@ -12,6 +13,10 @@ variable "management_account_id" { type = string }
 variable "workloads_ou_id" {
   type        = string
   description = "OU id (ou-xxxx-xxxxxxxx) containing the dev/test workload accounts."
+}
+variable "infrastructure_ou_id" {
+  type        = string
+  description = "OU id (ou-xxxx-xxxxxxxx) containing the shared-services account."
 }
 
 provider "aws" {
@@ -108,4 +113,12 @@ resource "aws_organizations_policy_attachment" "workloads" {
   for_each  = aws_organizations_policy.scp
   policy_id = each.value.id
   target_id = var.workloads_ou_id
+}
+
+# I-6: the same region and security baseline for the shared-services account (registry + CI build role).
+# hsp-deploy-path-only is not attached here: no ECS workloads run in shared-services.
+resource "aws_organizations_policy_attachment" "infrastructure" {
+  for_each  = toset(["hsp-region-allowlist", "hsp-security-baseline"])
+  policy_id = aws_organizations_policy.scp[each.key].id
+  target_id = var.infrastructure_ou_id
 }

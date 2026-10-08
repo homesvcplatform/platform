@@ -216,7 +216,7 @@
 - **Revisit when:** never for the applicationId once claimed. The DLT header is chosen at entity incorporation.
 
 ## ADR-022: Gate 1 foundation decisions (Phase 2 implementation addendum)
-- **Status:** Proposed with Gate 1 (2026-10-08). Each item implements an already-approved decision; none changes product scope.
+- **Status:** Accepted by the founder (2026-10-08); proposed with Gate 1. Each item implements an already-approved decision; none changes product scope.
 - **Context:** Implementing Gate 1 required choices the Phase 2 docs left open, and it exposed one structural inconsistency.
 
 | # | Decision | Reasoning / trade-off |
@@ -231,6 +231,7 @@
 | 8 | Fargate tasks use **X86_64** in Phase 2 | Avoids QEMU cross-builds on CI. Graviton/ARM64 (Phase 1 14 §2.2) is a later cost optimisation |
 | 9 | Workspace naming: `@hsp/<shared>`, `@hsp/module-<name>`, `@hsp/adapter-<name>`, `@hsp/app-<role>` | ADR-021 neutral namespace. Enforced by `tools/architecture/check-workspace.mjs` |
 | 10 | Until Gate 3 splits client and server code, the **whole `web-bff` app is treated as a frontend** for boundary rule B7 | Safer default. Gate 3 adds a server-only directory exception for the BFF |
+| 11 | *(Added 2026-10-08, founder-approved Gate 1 issue I-2 Option A.)* **The image registry and the CI build role live in the shared-services account** (Phase 1 14 §2.1), not in each workload account. `infra/envs/shared-services` holds one immutable, KMS-encrypted ECR repository (`hsp-shared-backend`, `infra/modules/registry`) and the GitHub OIDC build role (`hsp-shared-ci-build`, main branch only, `infra/modules/ci-build`). dev/test pull cross-account: the repository and key policies allow only their `hsp-*-task-execution` and `hsp-*-deploy` roles. dev/test receive the registry ARN, URL and key ARN as explicit Terraform inputs. Deploy roles stay in each workload account | Corrects a Gate 1 deviation from Phase 1. It also fixes the test deploy path: CI builds and signs once, and dev and test deploy the same digest from one registry. Trade-off: one more account to run, and runtime pulls depend on a cross-account policy |
 
 - **Consequences:** `tools/architecture/modules.json` is the single source of truth for module dependencies (generates the dependency-cruiser rules). Any new module edge requires an ADR change.
 - **Revisit when:** ARM64 builds are needed (cost), or the type-stripping constraint becomes limiting.

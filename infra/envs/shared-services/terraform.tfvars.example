@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars (git-ignored). Shared-services account (Infrastructure OU) only.
+account_id           = "111111111111"
+github_repository    = "homesvcplatform/platform"
+consumer_account_ids = ["000000000000", "000000000001"] # dev, test

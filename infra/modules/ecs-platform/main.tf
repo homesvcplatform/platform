@@ -1,4 +1,5 @@
-# ECS cluster, immutable ECR repository, per-role log groups and least-privilege task roles (Phase 1 14 §2.2, §2.5).
+# ECS cluster, per-role log groups and least-privilege task roles (Phase 1 14 §2.2, §2.5).
+# Images come from the shared-services registry (Phase 1 14 §2.1, I-2); the execution role pulls cross-account.
 # ECS services are created at Gate 3 when roles serve traffic; Gate 1 only provides the platform.
 terraform {
   required_providers {
@@ -11,7 +12,14 @@ variable "environment" { type = string }
 variable "vpc_id" { type = string }
 variable "vpc_cidr" { type = string }
 variable "logs_kms_key_arn" { type = string }
-variable "ecr_kms_key_arn" { type = string }
+variable "ecr_repository_arn" {
+  type        = string
+  description = "Shared backend repository in the shared-services account (infra/modules/registry, I-2)."
+}
+variable "ecr_kms_key_arn" {
+  type        = string
+  description = "Shared registry KMS key in the shared-services account."
+}
 variable "process_roles" {
   type    = list(string)
   default = ["api", "admin-api", "webhook", "voice", "worker", "scheduler", "media-scanner"]
@@ -23,36 +31,6 @@ resource "aws_ecs_cluster" "this" {
     name  = "containerInsights"
     value = "enabled"
   }
-}
-
-resource "aws_ecr_repository" "backend" {
-  name                 = "${var.name_prefix}-backend"
-  image_tag_mutability = "IMMUTABLE"
-  image_scanning_configuration { scan_on_push = true }
-  encryption_configuration {
-    encryption_type = "KMS"
-    kms_key         = var.ecr_kms_key_arn
-  }
-}
-
-resource "aws_ecr_lifecycle_policy" "backend" {
-  repository = aws_ecr_repository.backend.name
-  policy = jsonencode({
-    rules = [
-      {
-        rulePriority = 1
-        description  = "Expire supply-chain self-test images after 1 day"
-        selection    = { tagStatus = "tagged", tagPrefixList = ["selftest-unsigned-"], countType = "sinceImagePushed", countUnit = "days", countNumber = 1 }
-        action       = { type = "expire" }
-      },
-      {
-        rulePriority = 2
-        description  = "Keep the last 200 images"
-        selection    = { tagStatus = "any", countType = "imageCountMoreThan", countNumber = 200 }
-        action       = { type = "expire" }
-      },
-    ]
-  })
 }
 
 resource "aws_cloudwatch_log_group" "role" {
@@ -85,7 +63,7 @@ data "aws_iam_policy_document" "execution" {
   }
   statement {
     actions   = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability"]
-    resources = [aws_ecr_repository.backend.arn]
+    resources = [var.ecr_repository_arn]
   }
   statement {
     actions   = ["kms:Decrypt"]
@@ -133,8 +111,6 @@ resource "aws_security_group" "app" {
 
 output "cluster_arn" { value = aws_ecs_cluster.this.arn }
 output "cluster_name" { value = aws_ecs_cluster.this.name }
-output "ecr_repository_arn" { value = aws_ecr_repository.backend.arn }
-output "ecr_repository_url" { value = aws_ecr_repository.backend.repository_url }
 output "execution_role_arn" { value = aws_iam_role.execution.arn }
 output "task_role_arns" { value = { for k, r in aws_iam_role.task : k => r.arn } }
 output "app_security_group_id" { value = aws_security_group.app.id }

@@ -1,3 +1,7 @@
 # Copy to terraform.tfvars (git-ignored). Non-production account only.
-account_id        = "000000000000"
-github_repository = "homesvcplatform/platform"
+# shared_ecr_* come from `terraform output workload_inputs` in infra/envs/shared-services (apply that first).
+account_id                = "000000000000"
+github_repository         = "homesvcplatform/platform"
+shared_ecr_repository_arn = "arn:aws:ecr:ap-south-1:111111111111:repository/hsp-shared-backend"
+shared_ecr_repository_url = "111111111111.dkr.ecr.ap-south-1.amazonaws.com/hsp-shared-backend"
+shared_ecr_kms_key_arn    = "arn:aws:kms:ap-south-1:111111111111:key/00000000-0000-0000-0000-000000000000"

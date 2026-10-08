@@ -13,7 +13,7 @@ apps/        process roles (thin entrypoints): api, admin-api, webhook, voice, w
 packages/    shared kernel packages (@hsp/kernel, money, errors, events, policy, observability, security, ...)
 packages/modules/   21 bounded modules (@hsp/module-*): only src/public (+ src/http for apps) is importable
 packages/adapters/  fakes/sandboxes implementing module ports
-infra/       Terraform: modules/, envs/{dev,test} (no production), org/ (SCP guardrails)
+infra/       Terraform: modules/, envs/{shared-services,dev,test} (no production), org/ (SCP guardrails)
 tools/       architecture + guardrail checks, deploy verification
 ```
 

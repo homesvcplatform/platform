@@ -13,10 +13,10 @@ variable "name_prefix" {
 
 variable "data_classes" {
   type        = list(string)
-  description = "Symmetric data-class keys to create."
+  description = "Symmetric data-class keys to create. The image registry key lives in shared-services (infra/modules/registry, I-2)."
   default = [
     "db", "pii-contact", "pii-address", "kyc", "recordings", "restricted-attributes",
-    "files-general", "logs", "backup", "audit", "secrets", "ecr",
+    "files-general", "logs", "backup", "audit", "secrets",
   ]
 }
 

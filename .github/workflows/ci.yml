@@ -113,9 +113,9 @@ jobs:
           terraform_version: 1.16.5
       - name: terraform fmt
         run: terraform fmt -check -recursive infra
-      - name: terraform validate (dev, test, org guardrails)
+      - name: terraform validate (shared-services, dev, test, org guardrails)
         run: |
-          for dir in infra/envs/dev infra/envs/test infra/org; do
+          for dir in infra/envs/shared-services infra/envs/dev infra/envs/test infra/org; do
             terraform -chdir="$dir" init -backend=false -input=false
             terraform -chdir="$dir" validate
           done
