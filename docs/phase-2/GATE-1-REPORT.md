@@ -38,7 +38,7 @@
 | G4 `sca` | **PASS**: OSV-Scanner v2.6.0, 205 packages, no issues |
 | G5 `iac` | **PASS**: `terraform fmt` and `validate` for all 4 roots (first binary validation of the Terraform); Checkov 3.3.26 496 passed / 0 failed / 43 justified skips; fixture self-test 14 failures |
 | G6 `image` | **PASS**: build OK, Trivy v0.75.0 0 findings, CycloneDX SBOM uploaded. Not pushed or signed (A5 needs AWS) |
-| G7 | **PARTIAL** (TE-03): interim ruleset `main-protection-interim` (id 24743658) active and verified by API read-back. Live rejection test pending (founder). Approval and code-owner rules deferred until there are more members |
+| G7 | **PARTIAL** (TE-03): interim ruleset `main-protection-interim` (id 24743658) active and verified by API read-back. **Live:** direct push to `main` rejected (GH013, PR required, 6 required checks); PR #3 merge blocked by "Commits must have verified signatures". Approval and code-owner rules deferred until there are more members |
 | G8, G9 | **PENDING**: need real additional members and throwaway PRs ([closure checklist §3](GATE-1-CLOSURE-CHECKLIST.md#3-must-be-proven-in-github-ci-no-te-01-impact)) |
 
 **How it got green.** The first run (37819790355, `6ea5830`) failed three jobs, all fixed at the root in `4971643` and `f24d451` without weakening any check:
