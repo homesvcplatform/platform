@@ -65,7 +65,7 @@ describe('canary-PII scan', () => {
     await voice.identity.verifyIvrPin({ userId, pin: '4826', failuresThisCall: 0 }, meta());
     await voice.identity.verifyIvrPin({ userId, pin: '7319', failuresThisCall: 1 }, meta());
 
-    const audit = (await h.db.admin.query('SELECT json_build_object('action', action, 'resource_type', resource_type, 'reason_code', reason_code, 'change_summary', change_summary)::text AS j FROM compliance.audit_logs')).rows.map((r) => r.j as string);
+    const audit = (await h.db.admin.query("SELECT json_build_object('action', action, 'resource_type', resource_type, 'reason_code', reason_code, 'change_summary', change_summary)::text AS j FROM compliance.audit_logs")).rows.map((r) => r.j as string);
     expect(h.logs.length).toBeGreaterThan(5);
     expect(audit.length).toBeGreaterThan(8);
     expect(secrets.every((s) => s.length >= 4)).toBe(true);
