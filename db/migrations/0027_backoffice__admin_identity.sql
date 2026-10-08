@@ -66,7 +66,7 @@ CREATE INDEX admin_sessions_active_ix ON backoffice.admin_sessions (admin_user_i
 CREATE TABLE backoffice.admin_webauthn_credentials (
   id              uuid PRIMARY KEY,
   admin_user_id   uuid NOT NULL REFERENCES backoffice.admin_users(id),
-  credential_id   text NOT NULL UNIQUE CHECK (credential_id ~ '^[A-Za-z0-9_-]{22,1400}$'),
+  credential_id   text NOT NULL UNIQUE CHECK (credential_id ~ '^[A-Za-z0-9_-]+$' AND length(credential_id) BETWEEN 22 AND 1400),
   public_key_spki bytea NOT NULL,
   sign_count      bigint NOT NULL DEFAULT 0 CHECK (sign_count >= 0),
   backup_eligible boolean NOT NULL,
