@@ -47,6 +47,40 @@ importers:
       '@hsp/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@hsp/module-backoffice':
+        specifier: workspace:*
+        version: link:../../packages/modules/backoffice
+      '@hsp/module-identity':
+        specifier: workspace:*
+        version: link:../../packages/modules/identity
+      '@hsp/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@hsp/policy':
+        specifier: workspace:*
+        version: link:../../packages/policy
+      '@hsp/security':
+        specifier: workspace:*
+        version: link:../../packages/security
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
+    devDependencies:
+      '@hsp/adapter-kms-local':
+        specifier: workspace:*
+        version: link:../../packages/adapters/kms-local
+      '@hsp/adapter-sms-fake':
+        specifier: workspace:*
+        version: link:../../packages/adapters/sms-fake
+      '@hsp/errors':
+        specifier: workspace:*
+        version: link:../../packages/errors
+      '@hsp/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
 
   apps/admin-web: {}
 
@@ -55,6 +89,37 @@ importers:
       '@hsp/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@hsp/module-identity':
+        specifier: workspace:*
+        version: link:../../packages/modules/identity
+      '@hsp/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@hsp/policy':
+        specifier: workspace:*
+        version: link:../../packages/policy
+      '@hsp/security':
+        specifier: workspace:*
+        version: link:../../packages/security
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
+    devDependencies:
+      '@hsp/adapter-kms-local':
+        specifier: workspace:*
+        version: link:../../packages/adapters/kms-local
+      '@hsp/adapter-sms-fake':
+        specifier: workspace:*
+        version: link:../../packages/adapters/sms-fake
+      '@hsp/errors':
+        specifier: workspace:*
+        version: link:../../packages/errors
+      '@hsp/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
 
   apps/media-scanner:
     dependencies:
@@ -92,7 +157,14 @@ importers:
 
   packages/adapters/ai-fake: {}
 
-  packages/adapters/kms-local: {}
+  packages/adapters/kms-local:
+    dependencies:
+      '@hsp/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@hsp/security':
+        specifier: workspace:*
+        version: link:../../security
 
   packages/adapters/kyc-fake: {}
 
@@ -100,19 +172,33 @@ importers:
 
   packages/adapters/push-fake: {}
 
-  packages/adapters/sms-fake: {}
+  packages/adapters/sms-fake:
+    dependencies:
+      '@hsp/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@hsp/module-identity':
+        specifier: workspace:*
+        version: link:../../modules/identity
 
   packages/adapters/telephony-simulator: {}
 
   packages/adapters/whatsapp-fake: {}
 
-  packages/contracts: {}
+  packages/contracts:
+    dependencies:
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
 
   packages/db:
     dependencies:
       '@hsp/kernel':
         specifier: workspace:*
         version: link:../kernel
+      '@hsp/observability':
+        specifier: workspace:*
+        version: link:../observability
       pg:
         specifier: 8.23.0
         version: 8.23.0
@@ -143,7 +229,39 @@ importers:
 
   packages/modules/ai: {}
 
-  packages/modules/backoffice: {}
+  packages/modules/backoffice:
+    dependencies:
+      '@hsp/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@hsp/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@hsp/errors':
+        specifier: workspace:*
+        version: link:../../errors
+      '@hsp/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@hsp/observability':
+        specifier: workspace:*
+        version: link:../../observability
+      '@hsp/policy':
+        specifier: workspace:*
+        version: link:../../policy
+      '@hsp/security':
+        specifier: workspace:*
+        version: link:../../security
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
 
   packages/modules/benefits: {}
 
@@ -163,7 +281,39 @@ importers:
 
   packages/modules/geo: {}
 
-  packages/modules/identity: {}
+  packages/modules/identity:
+    dependencies:
+      '@hsp/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@hsp/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@hsp/errors':
+        specifier: workspace:*
+        version: link:../../errors
+      '@hsp/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@hsp/observability':
+        specifier: workspace:*
+        version: link:../../observability
+      '@hsp/policy':
+        specifier: workspace:*
+        version: link:../../policy
+      '@hsp/security':
+        specifier: workspace:*
+        version: link:../../security
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
 
   packages/modules/jobs: {}
 
@@ -189,7 +339,11 @@ importers:
 
   packages/policy: {}
 
-  packages/security: {}
+  packages/security:
+    dependencies:
+      '@hsp/kernel':
+        specifier: workspace:*
+        version: link:../kernel
 
   packages/testing:
     dependencies:
@@ -199,6 +353,12 @@ importers:
       '@hsp/kernel':
         specifier: workspace:*
         version: link:../kernel
+      '@hsp/policy':
+        specifier: workspace:*
+        version: link:../policy
+      '@hsp/security':
+        specifier: workspace:*
+        version: link:../security
       pg:
         specifier: 8.23.0
         version: 8.23.0

@@ -9,5 +9,9 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@hsp/kernel": "workspace:*",
+    "@hsp/module-identity": "workspace:*"
   }
 }

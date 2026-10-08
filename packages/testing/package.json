@@ -13,7 +13,9 @@
   "dependencies": {
     "@hsp/db": "workspace:*",
     "@hsp/kernel": "workspace:*",
-    "pg": "8.23.0"
+    "pg": "8.23.0",
+    "@hsp/policy": "workspace:*",
+    "@hsp/security": "workspace:*"
   },
   "devDependencies": {
     "@types/pg": "8.23.1"

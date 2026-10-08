@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "pg": "8.23.0",
-    "@hsp/kernel": "workspace:*"
+    "@hsp/kernel": "workspace:*",
+    "@hsp/observability": "workspace:*"
   },
   "devDependencies": {
     "@types/pg": "8.23.1"

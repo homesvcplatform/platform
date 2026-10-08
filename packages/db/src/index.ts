@@ -1,5 +1,7 @@
 // @hsp/db: connection pools per process role, forward-only migrations, query ownership guard (B2) and unit of work
-// limited to the approved transactional coupling points (B4).
+// limited to the approved transactional coupling points (B4), and the hash-chained audit writer.
+export { appendAudit, AuditEntryError, validateChangeSummary } from './audit.ts';
+export type { AuditActorType, AuditEntry, AuditOutcome, AuditValue } from './audit.ts';
 export { bootstrapCluster, bootstrapDatabase, REQUIRED_EXTENSIONS } from './bootstrap.ts';
 export { checksumOf, loadMigrations, MigrationError, parseMigrations, runMigrations } from './migrate.ts';
 export type { Migration, MigrationRunResult, Queryable, RunOptions } from './migrate.ts';

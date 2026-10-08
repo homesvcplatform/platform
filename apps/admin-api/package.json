@@ -9,6 +9,19 @@
     "start": "node src/main.ts"
   },
   "dependencies": {
-    "@hsp/kernel": "workspace:*"
+    "@hsp/kernel": "workspace:*",
+    "@hsp/module-identity": "workspace:*",
+    "@hsp/module-backoffice": "workspace:*",
+    "@hsp/policy": "workspace:*",
+    "@hsp/security": "workspace:*",
+    "@hsp/observability": "workspace:*",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@hsp/adapter-kms-local": "workspace:*",
+    "@hsp/adapter-sms-fake": "workspace:*",
+    "@hsp/errors": "workspace:*",
+    "@hsp/testing": "workspace:*",
+    "@types/pg": "8.23.1"
   }
 }
