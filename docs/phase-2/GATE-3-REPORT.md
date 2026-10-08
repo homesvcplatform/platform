@@ -23,7 +23,26 @@
 Supporting: `@hsp/errors` (problem+json, no internals), `@hsp/contracts` auth/admin DTOs (strict), migrations 0026–0028, app compositions `apps/api` / `apps/admin-api` (`bootstrap.ts`).
 
 ## 2. Exit criteria evidence
-RESULTS_PLACEHOLDER
+**GitHub CI [run 37856692548](https://github.com/homesvcplatform/platform/actions/runs/37856692548)** (commit `8052cc3`): every job succeeded (`supply-chain-selftest` skipped by design, TE-01). From the `verify` log: guards, lint, typecheck, 0 boundary violations (153 modules), **196/196 unit tests**, squawk "0 issues in 28 files", **test:db 11 files / 142/142 tests** (new in Gate 3: identity 20, admin realm + matrix 38, audit chain 5, canary 1; grants now 18).
+
+| Exit criterion | Evidence |
+|---|---|
+| Authorization-matrix generator running for all implemented endpoints (default deny) | `@hsp/testing` `generateMatrixCases` expands all 38 × 15 cells of 05 §11 (data checked cell-for-cell against the doc). Implemented capabilities ("Revoke sessions", "Grant roles") are checked per cell with role permissions loaded from the DB, including out-of-relationship objects (404). The other 542 cells (other capabilities, break-glass column) must deny by default, and do. Every endpoint declares a policy + idempotency (B11/B12) or the composition refuses to start |
+| ST-08 (OTP brute force, reuse, expiry) | 5 wrong codes invalidate the challenge; reuse and expiry give the same generic `OTP_INVALID` |
+| ST-09 (OTP flood) | Per-phone cooldown / hourly cap (429 + Retry-After), per-IP bucket (20/h), global breaker → bot check |
+| ST-10 (refresh reuse) | Reuse after 10 s or from another device revokes the family and the session (401 `SESSION_REVOKED`, audited); retry within 10 s returns the same successor |
+| ST-11 (JWT alg=none, HS256 with the public key, wrong aud, expired) | All 401, at unit level and through the HTTP handler; foreign keys and tampering also refused |
+| ST-12 (CSRF) | Mutations without the token, with a foreign Origin or without Origin → 403 (customer and admin realms) |
+| ST-27 (X-Forwarded-For spoofing) | XFF never read; a signed `X-Client-IP` only from the BFF identity; a spoofed flood is limited on the real peer IP |
+| ST-28 (deleted user, old token) | After erasure: old access / refresh tokens 401, PII nulled, subject key destroyed, a restored old ciphertext can't be decrypted |
+| Refresh reuse revokes the family | ST-10 above |
+| No tokens in browser storage (SR-02) | API level: browser surfaces get only an HttpOnly `__Host-` cookie; no token in any browser response body. Real-browser storage E2E is a Gate 8 condition (§6) |
+| KMS decrypt denied for roles without the class grant | `kms-local` with SR-06 grants: the worker role can't reveal a phone (`KmsAccessDeniedError`); the api role can |
+| Canary-PII scan: 0 hits | All identity flows run with a canary phone; logs, audit rows and error bodies contain no canary, OTP code, PIN, refresh token, access token or cookie secret; success bodies contain no canary PII |
+| Also | Admin SSO refuses SMS / OTP / TOTP / password, foreign keys, wrong audience and over-long assertions; one concurrent admin session; passkey registration and step-up (origin, replay, other authenticator refused); maker-checker grant executes once, a tampered payload doesn't execute, INV-19 enforced by the DB; audit chain verifies under 25 concurrent writers and detects an edited, deleted or forged row; IVR PIN lockout; suspension revokes sessions |
+
+### 2a. Issues found and fixed by CI before green
+squawk lock-rule waivers on the empty `subject_keys` primary-key change; a JWT-shaped literal in a test (Semgrep); a permission CHECK that rejected wildcard families; the `roleCode` audit field (the audit validator refuses names containing `code`); the seed loader's subject-key insert (new `data_class`); a `credential_id` CHECK over PostgreSQL's regex repetition limit; adapters given an explicit test env (Vitest adds `PROD` to `process.env`, which the no-production guard correctly refuses).
 
 ## 3. Security review notes
 - New threat surface is limited to framework-neutral handlers; no endpoint is served yet (ADR-024 #1).
@@ -53,4 +72,4 @@ Real KMS key policies per data class and per role (`kms-local` enforces the same
 4. Gate 1 and Gate 2 conditions are unchanged.
 
 ## 7. Decision
-**PASS WITH CONDITIONS** when every PR #6 check is green on GitHub. Approver: founder (on merge of PR #6). Gate 4 not started.
+**PASS WITH CONDITIONS**. Every PR #6 check is green on GitHub (§2). Approver: founder (on merge of PR #6). Gate 4 not started.
