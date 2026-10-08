@@ -1,6 +1,8 @@
 # Shared backend image registry in the shared-services account (Phase 1 14 §2.1; Gate 1 I-2 Option A, ADR-022 #11).
 # One immutable, KMS-encrypted ECR repository. CI pushes once; dev/test pull the same digest cross-account.
-# Only the consumer accounts' task-execution and deploy roles may pull. Nobody outside this account may push.
+# Only the consumer accounts' task-execution and deploy roles may pull. Only the CI build role may push: an explicit
+# Deny covers every other principal, including administrators in this account.
+# An empty consumer list (TE-01: dev/test accounts not created yet) means no cross-account access at all.
 terraform {
   required_providers {
     aws = { source = "hashicorp/aws" }
@@ -14,16 +16,19 @@ variable "name_prefix" {
 
 variable "consumer_account_ids" {
   type        = list(string)
-  description = "Workload account ids (dev, test) whose hsp-*-task-execution and hsp-*-deploy roles may pull images."
+  description = "Workload account ids (dev, test) whose hsp-*-task-execution and hsp-*-deploy roles may pull images. Empty until those accounts exist (TE-01). Never use placeholder ids."
   validation {
-    condition     = length(var.consumer_account_ids) > 0 && alltrue([for id in var.consumer_account_ids : can(regex("^[0-9]{12}$", id))])
-    error_message = "consumer_account_ids must be a non-empty list of 12-digit AWS account ids."
+    condition     = alltrue([for id in var.consumer_account_ids : can(regex("^[0-9]{12}$", id))])
+    error_message = "consumer_account_ids must contain only 12-digit AWS account ids."
   }
 }
 
 data "aws_caller_identity" "current" {}
 
 locals {
+  has_consumers = length(var.consumer_account_ids) > 0
+  # Same name as the role created by infra/modules/ci-build in this account (name_prefix + "-ci-build").
+  ci_build_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.name_prefix}-ci-build"
   # Role-name patterns created by infra/modules/ecs-platform (task execution) and infra/modules/ci-oidc (deploy).
   consumer_role_arn_patterns = flatten([
     for id in var.consumer_account_ids : [
@@ -46,18 +51,21 @@ data "aws_iam_policy_document" "key" {
       identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
     }
   }
-  statement {
-    sid       = "ConsumerRolesDecryptImageLayers"
-    actions   = ["kms:Decrypt"]
-    resources = ["*"]
-    principals {
-      type        = "AWS"
-      identifiers = [for id in var.consumer_account_ids : "arn:aws:iam::${id}:root"]
-    }
-    condition {
-      test     = "ArnLike"
-      variable = "aws:PrincipalArn"
-      values   = local.consumer_role_arn_patterns
+  dynamic "statement" {
+    for_each = local.has_consumers ? [1] : []
+    content {
+      sid       = "ConsumerRolesDecryptImageLayers"
+      actions   = ["kms:Decrypt"]
+      resources = ["*"]
+      principals {
+        type        = "AWS"
+        identifiers = [for id in var.consumer_account_ids : "arn:aws:iam::${id}:root"]
+      }
+      condition {
+        test     = "ArnLike"
+        variable = "aws:PrincipalArn"
+        values   = local.consumer_role_arn_patterns
+      }
     }
   }
 }
@@ -107,28 +115,48 @@ resource "aws_ecr_lifecycle_policy" "backend" {
   })
 }
 
-# Cross-account pull only (read actions). Push stays with the CI build role in this account (infra/modules/ci-build).
-data "aws_iam_policy_document" "pull" {
+# Cross-account pull only (read actions), and only when consumer accounts are listed. Push is denied to every principal
+# except the CI build role (infra/modules/ci-build). A same-account IAM allow alone would otherwise be enough to push.
+data "aws_iam_policy_document" "repository" {
   statement {
-    sid = "ConsumerRolesPullImages"
+    sid    = "OnlyCiBuildRolePushes"
+    effect = "Deny"
     actions = [
-      "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability", "ecr:DescribeImages",
+      "ecr:PutImage", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload",
     ]
     principals {
       type        = "AWS"
-      identifiers = [for id in var.consumer_account_ids : "arn:aws:iam::${id}:root"]
+      identifiers = ["*"]
     }
     condition {
-      test     = "ArnLike"
+      test     = "ArnNotEquals"
       variable = "aws:PrincipalArn"
-      values   = local.consumer_role_arn_patterns
+      values   = [local.ci_build_role_arn]
+    }
+  }
+  dynamic "statement" {
+    for_each = local.has_consumers ? [1] : []
+    content {
+      sid = "ConsumerRolesPullImages"
+      actions = [
+        "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability", "ecr:DescribeImages",
+      ]
+      principals {
+        type        = "AWS"
+        identifiers = [for id in var.consumer_account_ids : "arn:aws:iam::${id}:root"]
+      }
+      condition {
+        test     = "ArnLike"
+        variable = "aws:PrincipalArn"
+        values   = local.consumer_role_arn_patterns
+      }
     }
   }
 }
 
 resource "aws_ecr_repository_policy" "backend" {
   repository = aws_ecr_repository.backend.name
-  policy     = data.aws_iam_policy_document.pull.json
+  policy     = data.aws_iam_policy_document.repository.json
 }
 
 output "repository_arn" { value = aws_ecr_repository.backend.arn }

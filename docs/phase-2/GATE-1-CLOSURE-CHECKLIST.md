@@ -1,8 +1,48 @@
 # Gate 1 Closure Checklist
 
-> **Gate 1 status: PASS WITH CONDITIONS**, unchanged until every external proof in §3 and §4 is recorded.
-> Gate 2: **not started, untouched.** No scanner (gitleaks, Semgrep, OSV-Scanner, Checkov, Trivy) is claimed to pass until it has run in GitHub CI.
-> Prepared 2026-10-08. Updated 2026-10-08 after the founder's decisions (ADR-022 accepted, I-1 fixed, I-2 Option A implemented, I-6 resolved). Companion to [GATE-1-REPORT.md](GATE-1-REPORT.md).
+> **Gate 1 status: PASS WITH CONDITIONS**, unchanged until every external proof in §3 and §4 is recorded. The AWS workload-account proofs are deferred under temporary exception **TE-01** (§0). They are not waived.
+> Gate 2: **not started.** It may start only under **TE-02** (§0), once G1–G9 are recorded. No scanner (gitleaks, Semgrep, OSV-Scanner, Checkov, Trivy) is claimed to pass until it has run in GitHub CI.
+> Prepared 2026-10-08. Updated 2026-10-08 after the founder's decisions:
+> - ADR-022 accepted.
+> - I-1 fixed, I-2 Option A implemented, I-6 resolved.
+> - Repository transferred to `homesvcplatform/platform`.
+> - AWS account quota decision: TE-01/TE-02 recorded, registry amendments made.
+>
+> Companion to [GATE-1-REPORT.md](GATE-1-REPORT.md).
+
+---
+
+## 0. Temporary exceptions (founder-approved 2026-10-08)
+**Context:** AWS Organizations refuses to create more member accounts because the organisation's account quota is reached. Only the management account and `housefi-shared-services` (Infrastructure OU) exist. A quota increase has been requested and is not assumed. The `housefi-dev` and `housefi-test` accounts can't be created yet.
+
+**Rejected alternatives:**
+- Running dev/test in the **management account**: SCPs never apply to the management account, so A4 would be unprovable. It is also against AWS guidance.
+- Running dev/test in the **shared-services account**: it would put workloads next to the registry and CI build role, which is the separation I-2 restored.
+- Combining dev and test in **one account**: isolation would be by IAM only, sharing account-wide settings and keys.
+- A **second AWS organisation**: it would split guardrails and the audit trail.
+- **LocalStack as evidence**: it doesn't faithfully enforce IAM or SCPs.
+- **Inviting an existing account**: it counts against the same quota.
+
+**The architecture is unchanged:** one account each for shared-services, dev and test, exactly as Phase 1 14 §2.1 and ADR-022 #11 specify.
+
+### TE-01: AWS workload-account proofs deferred
+| | |
+|---|---|
+| **What is deferred** | Proofs that need the dev/test accounts: **A1b, A2, A4, A7, A8b** (§4). They stay required for Gate 1 PASS |
+| **What proceeds now** | G1–G9 (GitHub). In AWS: A1a (shared-services and org apply), A3, A5, A6, A8a (§4) |
+| **Rules while TE-01 is open** | (1) No workload resources (VPC, ECS, RDS, Valkey, app buckets, deploy roles) in **any** account other than dedicated dev/test accounts in the Workloads OU. No account consolidation. (2) `consumer_account_ids` in shared-services stays **empty** until the real dev/test account IDs exist. **Never** use placeholder IDs: a made-up 12-digit ID may belong to someone else's account. (3) No production resources, real PII, real payments, production telephony or production KYC anywhere (unchanged global rules). (4) The founder tracks the quota request. If it isn't resolved within ~14 days (by 2026-10-22), the founder reviews it as an explicit decision, not a workaround |
+| **Removal condition** | dev and test accounts exist in the Workloads OU, and A1b, A2, A4, A7 and A8b are recorded. Then TE-01 is closed in this file |
+| **Risks** | The dev/test Terraform (network, data-stores, ecs-platform, guardrails, ci-oidc) stays unexercised in AWS for longer. CI `validate` + Checkov (G5) reduce but don't remove this risk |
+
+### TE-02: Gate 2 may start before Gate 1 is PASS (gate-sequencing exception)
+| | |
+|---|---|
+| **Rule being excepted** | [03-phase-2-gates.md](03-phase-2-gates.md): Gate 2 depends on Gate 1, and "nothing merges into a later gate's scope until its prerequisites pass" |
+| **Why it is safe** | Gate 2's deliverables and exit criteria (migrations, schemas, per-process DB roles and grants, constraints, append-only triggers, synthetic seed loader) need no AWS. Phase 1 13 already runs integration tests on ephemeral Postgres + PostGIS containers in CI |
+| **Start condition** | **G1–G9 recorded** (§3), so every CI control (boundaries, secrets, SAST, SCA, IaC, rulesets, code-owner and two-approval reviews) is enforcing on every Gate 2 PR. Then the founder explicitly says "start Gate 2" |
+| **Restrictions** | (1) **Scope:** Gate 2 deliverables only. **Gate 3 does not start** until Gate 1 is PASS or the founder decides otherwise. (2) **Where it runs:** local and CI only, on ephemeral Postgres 17 + PostGIS containers. **No AWS resources, no deploys**, and no `infra/` changes unless separately approved. (3) **Data:** synthetic only. No real PII, payments, telephony or KYC. (4) **RDS fidelity:** migrations and grant tests run as a **non-superuser** owner role (like the RDS master user, without SUPERUSER), on Postgres/PostGIS versions RDS offers, pinned. (5) **Gate 2 decision cap:** at most PASS WITH CONDITIONS, with the condition that migrations and the grant-matrix tests are re-run against RDS in dev once it exists. (6) **Local Docker:** not installed on the founder's workstation. DB tests run in GitHub Actions unless the founder approves installing Docker locally |
+| **Removal condition** | Gate 1 is PASS **and** the Gate 2 migrations and grant-matrix tests have been re-run on RDS in dev and recorded |
+| **Risks** | Local Postgres differs from RDS (superuser, extensions, parameter groups, IAM auth), mitigated by restriction (4) and the RDS re-run condition. It also sets a precedent of starting a gate early, mitigated by the narrow scope, the start condition and the removal condition |
 
 ---
 
@@ -10,18 +50,19 @@
 Gate 1's structural changes are recorded in [ADR-022](../phase-1/15-architecture-decisions.md#adr-022-gate-1-foundation-decisions-phase-2-implementation-addendum) and must stay explicit in the gate review:
 - **Dependency-inversion ports for TCP-2 and TCP-3.** `jobs/public` declares `MaterialUsageRecorder` and `BillIssuer`. `diagnosis` and `payments` implement them, and apps wire them. Without this, calls from `jobs` → `diagnosis` and `jobs` → `payments` create import cycles (`diagnosis` → `jobs`, `payments` → `diagnosis` → `jobs`). Transaction semantics are unchanged. `payments` gains a compile-time dependency on `jobs` (recorded in `tools/architecture/modules.json`).
 - **`OtpSender` port** owned by `identity`, implemented by `comms`. This removes an `identity` ↔ `comms` cycle present in the Phase 1 text.
-- **Shared-services registry (ADR-022 #11, I-2 Option A).** The ECR repository and the CI build role move from each workload account to the shared-services account, as Phase 1 14 §2.1 specifies. See §5 for exactly what changed.
+- **Shared-services registry (ADR-022 #11, I-2 Option A).** The ECR repository and the CI build role move from each workload account to the shared-services account, as Phase 1 14 §2.1 specifies. See §5 for exactly what changed, including the 2026-10-08 registry amendments.
 - Other ADR-022 items (toolchain pins, Node type stripping, framework timing, distroless image, keyless signing, X86_64, naming, web-bff treated as frontend) are implementation choices under approved decisions.
-- **ADR-022 ACCEPTED by the founder on 2026-10-08** (status updated in docs/phase-1/15). Item #11 was added afterwards under the founder's I-2 Option A approval.
+- **ADR-022 ACCEPTED by the founder on 2026-10-08** (status updated in docs/phase-1/15). Item #11 was added afterwards under the founder's I-2 Option A approval, and its amendment under the TE-01 decision.
+- TE-01 and TE-02 are **temporary exceptions, not architecture changes**, so they are recorded here (§0), not as ADRs.
 
 ---
 
-## 2. Already proven locally (`pnpm run ci` and the Terraform cross-reference check re-run 2026-10-08 after the I-1/I-2 and I-6 changes; other rows are from the original Gate 1 run, and no application code has changed since)
+## 2. Already proven locally (`pnpm run ci` and the Terraform cross-reference check re-run 2026-10-08 after the registry amendments; other rows are from the original Gate 1 run, and no application code has changed since)
 | Proof | Evidence |
 |---|---|
 | `pnpm run ci` passes | no-prod guard ✔ · workspace check ✔ · ESLint ✔ · strict typecheck **53/53** ✔ · dependency-cruiser **0 violations** (83 modules) ✔ · Vitest **92/92** ✔ |
 | Boundary violations fail | Planted B1/B3/B7 violations in the real repo → `pnpm run arch` exit 4 with 4 errors. 13-case self-test suite detects every active rule + cycles + unresolvable imports, with no false positives |
-| No-production guardrails | `APP_ENV=production`, `PROD_*` variables, and non-allowlisted AWS accounts are refused at boot. `prod` isn't a valid config value. Repo guard finds no prod environment (including the new `infra/envs/shared-services`) |
+| No-production guardrails | `APP_ENV=production`, `PROD_*` variables, and non-allowlisted AWS accounts are refused at boot. `prod` isn't a valid config value. Repo guard finds no prod environment (including `infra/envs/shared-services`) |
 | Config validation | Invalid config refused. Error names keys but never values |
 | Role boot | `api` starts locally and serves `/healthz` |
 | Deploy controls (offline part) | Non-digest image refs refused. Unverifiable signature → refused (fail-closed). `prod`/`production` targets refused by the task-definition renderer. Rendered task definition is non-root, has a read-only root FS, drops all capabilities, and is digest-pinned |
@@ -29,48 +70,68 @@ Gate 1's structural changes are recorded in [ADR-022](../phase-1/15-architecture
 | CI definitions | All 3 workflows + Dependabot + Semgrep/Checkov configs parse. 23/23 action references are SHA-pinned. Base images pinned by digest |
 | Terraform cross-references (scripted, **not** `terraform validate`) | For `envs/shared-services`, `envs/dev`, `envs/test` and `org`: every module argument is a declared variable, every required variable is passed, every `module.*.*` output and `var.*` reference exists, brackets balance. No module still uses the removed `ecr` key |
 
-**Not proven locally:** Docker build, gitleaks, Semgrep, OSV-Scanner, Checkov, Trivy, Syft, cosign, and **`terraform fmt/validate/plan/apply`**. These tools aren't installed on this machine and none were installed. Terraform formatting and validation of the I-1/I-2 changes is **CI-only** (proof G5).
+**Not proven locally:** Docker build, gitleaks, Semgrep, OSV-Scanner, Checkov, Trivy, Syft, cosign, and **`terraform fmt/validate/plan/apply`**. These tools aren't installed on this machine and none were installed. Terraform formatting and validation of the I-1/I-2/I-6 changes and the registry amendments is **CI-only** (proof G5).
 
 ---
 
-## 3. Must be proven in GitHub CI
+## 3. Must be proven in GitHub CI (all possible now; no TE-01 impact)
 | # | Proof | Pass criterion |
 |---|---|---|
 | G1 | `verify` job | Green on a clean runner (frozen lockfile install, full `pnpm run ci`) |
 | G2 | `secrets-scan` | gitleaks over full history finds nothing **and** the planted-secret self-test step reports "Planted secret detected as expected" |
 | G3 | `sast` | Semgrep (registry default + project rules) finds nothing blocking **and** the planted-code self-test flags the insecure file |
 | G4 | `sca` | OSV-Scanner reports no known vulnerabilities in `pnpm-lock.yaml` |
-| G5 | `iac` | `terraform fmt -check` and `validate` pass for `envs/shared-services`, `envs/dev`, `envs/test`, `org` (first time any Terraform binary checks the I-1/I-2/I-6 changes). Checkov passes on `infra/`, including the new `registry` and `ci-build` modules, **and** the insecure-fixture self-test reports failed checks |
+| G5 | `iac` | `terraform fmt -check` and `validate` pass for `envs/shared-services`, `envs/dev`, `envs/test`, `org` (first time any Terraform binary checks the I-1/I-2/I-6 changes and the registry amendments). Checkov passes on `infra/`, including the `registry` and `ci-build` modules, **and** the insecure-fixture self-test reports failed checks |
 | G6 | `image` | Docker build succeeds. Trivy finds no fixable HIGH/CRITICAL issues. CycloneDX SBOM artifact uploaded |
-| G7 | Ruleset enforcement | Direct push to `main` rejected. A PR can't merge with any required check red. An unsigned commit is rejected |
+| G7 | Ruleset enforcement | Direct push to `main` rejected. A PR can't merge with any required check red. An unsigned commit is rejected. Code-owner review is required and the `@homesvcplatform/*` teams resolve |
 | G8 | Boundary check blocks a PR | A throwaway PR that adds a deep cross-module import → `verify` red (then close the PR) |
 | G9 | Two-approval rule | A throwaway PR touching `infra/` with one approval → `two-reviewers-for-sensitive-paths` red. With two approvals → green |
 
 Record each as a link to the CI run in GATE-1-REPORT §2. Any scanner finding is fixed or explicitly risk-accepted before closure.
 
 ## 4. Must be proven in AWS
-| # | Proof | Pass criterion |
-|---|---|---|
-| A1 | Infrastructure applies | `terraform apply` succeeds for **shared-services, then dev and test**. No public subnets in use, no public RDS/Valkey, data subnets have no internet route. dev/test contain **no** ECR repository |
-| A2 | No public buckets | Attempt to set a public bucket policy/ACL in dev → denied (account-level block). AWS Config rules `s3-public-access-prohibited` and `s3-account-public-access` show COMPLIANT |
-| A3 | Org guardrails | Applied from the management account. All three `infra/org` SCPs are attached to the **Workloads OU**. `hsp-region-allowlist` and `hsp-security-baseline` are attached to the **Infrastructure OU** (I-6). In shared-services, a regional call outside ap-south-1/ap-south-2 (e.g., `aws ecr describe-repositories --region us-east-1`) → **AccessDenied (explicit deny in SCP)** |
-| A4 | Only the pipeline can deploy | From a non-deploy principal (e.g., your SSO admin role in dev), `aws ecs register-task-definition …` → **AccessDenied (explicit deny in SCP)**. The `ecs-out-of-band-change` alert fires to the SNS topic |
-| A5 | Signed image published | A push to `main` → `image` job (CI build role in **shared-services**) pushes to `hsp-shared-backend`, keyless-signs and attaches the SBOM attestation (digest shown in the job summary) |
-| A6 | Unsigned image refused | The `supply-chain-selftest` job is green ("Unsigned image refused as expected") |
-| A7 | Signed deploy path works, cross-account | `Deploy` workflow to **`dev` and then `test`** with the same signed digest → verification of the shared-registry image passes in each and 7 task definitions are registered in each |
-| A8 | Shared registry is least-privilege | From a dev principal that is neither `hsp-*-task-execution` nor `hsp-*-deploy` (e.g., your SSO admin role), `aws ecr batch-get-image` on `hsp-shared-backend` → **AccessDenied**. A push from any principal other than `hsp-shared-ci-build` → **AccessDenied** |
+| # | Proof | Pass criterion | Status |
+|---|---|---|---|
+| A1a | Shared and org infrastructure applies | `terraform apply` succeeds for `infra/envs/shared-services` (with `consumer_account_ids = []`) and `infra/org` | **Possible now** |
+| A1b | Workload infrastructure applies | `terraform apply` succeeds for dev and test. No public subnets in use, no public RDS/Valkey, data subnets have no internet route. dev/test contain **no** ECR repository | **Blocked (TE-01)** |
+| A2 | No public buckets | Attempt to set a public bucket policy/ACL in dev → denied (account-level block). AWS Config rules `s3-public-access-prohibited` and `s3-account-public-access` show COMPLIANT | **Blocked (TE-01)** |
+| A3 | Org guardrails | Applied from the management account. All three `infra/org` SCPs are attached to the **Workloads OU** (it may still be empty). `hsp-region-allowlist` and `hsp-security-baseline` are attached to the **Infrastructure OU** (I-6). In shared-services, a regional call outside ap-south-1/ap-south-2 (e.g., `aws ecr describe-repositories --region us-east-1`) → **AccessDenied (explicit deny in SCP)** | **Possible now** |
+| A4 | Only the pipeline can deploy | From a non-deploy principal (e.g., your SSO admin role in dev), `aws ecs register-task-definition …` → **AccessDenied (explicit deny in SCP)**. The `ecs-out-of-band-change` alert fires to the SNS topic | **Blocked (TE-01)** |
+| A5 | Signed image published | A push to `main` → `image` job (CI build role in **shared-services**) pushes to `hsp-shared-backend`, keyless-signs and attaches the SBOM attestation (digest shown in the job summary) | **Possible now** |
+| A6 | Unsigned image refused | The `supply-chain-selftest` job is green ("Unsigned image refused as expected") | **Possible now** |
+| A7 | Signed deploy path works, cross-account | `Deploy` workflow to **`dev` and then `test`** with the same signed digest → verification of the shared-registry image passes in each and 7 task definitions are registered in each | **Blocked (TE-01)** |
+| A8a | Only CI can push | From a shared-services principal other than `hsp-shared-ci-build` (e.g., your SSO admin role), pushing an image to `hsp-shared-backend` → **AccessDenied (explicit deny in the repository policy)**. The CI build role's push still succeeds (A5) | **Possible now** |
+| A8b | Only runtime/deploy roles can pull | From a dev principal that is neither `hsp-*-task-execution` nor `hsp-*-deploy` (e.g., your SSO admin role), `aws ecr batch-get-image` on `hsp-shared-backend` → **AccessDenied**. The deploy and execution roles can pull (A7) | **Blocked (TE-01)** |
+
+*A8 was split on 2026-10-08. The earlier single A8 claimed that any non-CI push is denied. Before the registry amendment that was not true for administrators inside shared-services, because a same-account IAM allow is enough without a resource-policy deny.*
 
 ---
 
 ## 5. Issues found while preparing this checklist
 | # | Issue | Status |
 |---|---|---|
-| I-1 | `infra/envs/*` and `infra/org` declared `required_version >= 1.9.0`, but `backend.hcl.example` uses `use_lockfile = true` (S3-native state locking needs Terraform ≥ 1.10) | **FIXED 2026-10-08 (founder-approved).** Now `required_version = ">= 1.10.0"` in `infra/envs/{dev,test}`, `infra/org` and the new `infra/envs/shared-services` |
-| I-2 | **Deviation from Phase 1 14 §2.1:** Gate 1 placed the ECR repository and CI build role **in each workload account**, but Phase 1 places them in a **shared-services account**. CI pushes to one registry, so `deploy.yml` to **test** would have looked for the image in test's own ECR, where it doesn't exist | **IMPLEMENTED 2026-10-08 (founder-approved Option A, ADR-022 #11).** Details below. Unproven until G5 and A1, A5, A7, A8 |
-| I-3 | Rulesets on **private** repos need a paid GitHub plan (Team or higher). Secret-scanning push protection on private repos needs GitHub Secret Protection (paid) | **Open, founder action** (§6.1). Without them, G7 can't be proven and `apply-repo-protection.sh` partially fails. gitleaks in CI covers secret detection either way |
-| I-4 | AWS Config rules (guardrails module) need an AWS Config recorder in each workload account | **Open, founder action** (§6.3). Enable AWS Config (or Control Tower) first, or apply once with `enable_config_rules = false` and accept that A2's Config evidence is missing. Not needed in shared-services (no guardrails module there) |
+| I-1 | `infra/envs/*` and `infra/org` declared `required_version >= 1.9.0`, but `backend.hcl.example` uses `use_lockfile = true` (S3-native state locking needs Terraform ≥ 1.10) | **FIXED 2026-10-08 (founder-approved).** Now `required_version = ">= 1.10.0"` in `infra/envs/{dev,test}`, `infra/org` and `infra/envs/shared-services` |
+| I-2 | **Deviation from Phase 1 14 §2.1:** Gate 1 placed the ECR repository and CI build role **in each workload account**, but Phase 1 places them in a **shared-services account**. CI pushes to one registry, so `deploy.yml` to **test** would have looked for the image in test's own ECR, where it doesn't exist | **IMPLEMENTED 2026-10-08 (founder-approved Option A, ADR-022 #11), amended 2026-10-08** (see "Registry amendments" below). Unproven until G5 and A1a/A1b, A5, A7, A8a/A8b |
+| I-3 | Rulesets on **private** repos need a paid GitHub plan (Team or higher for organisations). Secret-scanning push protection on private repos needs GitHub Secret Protection (paid) | **Open, founder action** (§6.1). The repository is now in the `homesvcplatform` organisation. Without the plan, G7 can't be proven and `apply-repo-protection.sh` partially fails. gitleaks in CI covers secret detection either way |
+| I-4 | AWS Config rules (guardrails module) need an AWS Config recorder in each workload account | **Open, founder action, blocked by TE-01** (§6.3). Enable AWS Config (or Control Tower) in dev/test when they exist, or apply once with `enable_config_rules = false` and accept that A2's Config evidence is missing. Not needed in shared-services (no guardrails module there) |
 | I-5 | `tools/deploy/verify-image.sh` was staged early to keep its executable bit | **Resolved.** Committed in the initial commit `6a9a529` |
-| I-6 | **Shared-services had no SCP treatment in code.** `infra/org` attached the SCPs to the Workloads OU only. Phase 1 14 §2.1 draws SCPs at the organisation Root | **RESOLVED 2026-10-08 (founder decision: option a).** The existing `hsp-region-allowlist` and `hsp-security-baseline` SCPs are now also attached to the Infrastructure OU. No new policy text. Change set below. Unproven until G5 and A3. The account-level guardrails module (S3 account public-access block, EBS default encryption, Config rules, ECS drift alert) is still applied only in dev/test. That is unchanged and outside this decision |
+| I-6 | **Shared-services had no SCP treatment in code.** `infra/org` attached the SCPs to the Workloads OU only. Phase 1 14 §2.1 draws SCPs at the organisation Root | **RESOLVED 2026-10-08 (founder decision: option a).** The existing `hsp-region-allowlist` and `hsp-security-baseline` SCPs are now also attached to the Infrastructure OU. No new policy text. Unproven until G5 and A3. The account-level guardrails module (S3 account public-access block, EBS default encryption, Config rules, ECS drift alert) is still applied only in dev/test. That is unchanged and outside this decision |
+| I-7 | GitHub repository first created as `sujal128005/housefi` (personal account, brand name). CODEOWNERS teams can't exist there, and the OIDC trust and signature identity bind to owner/repo | **RESOLVED 2026-10-08 (founder action).** Transferred and renamed to **`homesvcplatform/platform`**, matching ADR-021, CODEOWNERS and the tfvars examples, before any AWS trust was created. No code change needed |
+| I-8 | The registry module required a non-empty `consumer_account_ids`, so shared-services couldn't be applied before dev/test exist. A8 overstated push protection (see §4 note) | **FIXED 2026-10-08 (founder-approved).** See "Registry amendments" below |
+
+### Registry amendments (2026-10-08, founder-approved with the TE-01 decision)
+- **`infra/modules/registry`:**
+  - `consumer_account_ids` may be **empty**. Each entry must still be a 12-digit ID.
+  - When it's empty, the cross-account pull statement (repository policy) and the consumer decrypt statement (key policy) are omitted, so there is no cross-account access at all.
+  - When it's non-empty, both statements are exactly as before.
+- **New explicit Deny in the repository policy** (`OnlyCiBuildRolePushes`):
+  - It denies `ecr:PutImage`, `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart` and `ecr:CompleteLayerUpload` to every principal whose `aws:PrincipalArn` isn't `arn:aws:iam::<shared-services>:role/hsp-shared-ci-build`.
+  - The ARN is built from `name_prefix`, the same name `infra/modules/ci-build` creates, so the modules don't depend on each other.
+  - The repository policy therefore always exists.
+  - Checkov's public-policy check (CKV_AWS_32) uses cloudsplaining, which ignores Deny statements in its source, so the `"*"` principal in a Deny shouldn't count as a public grant. Confirmed only when Checkov runs in CI (G5).
+- **`infra/envs/shared-services`:** the `consumer_account_ids` description and `terraform.tfvars.example` now say to leave it empty until dev/test exist and never to use placeholders.
+- **ADR-022 #11:** amendment note added.
+- **Unchanged:** dev/test Terraform, the `ci-build` module, `infra/org`, workflows, deploy tooling and application code.
 
 ### I-6 change set (exactly what changed)
 - **`infra/org/main.tf`:**
@@ -90,7 +151,7 @@ Record each as a link to the CI run in GATE-1-REPORT §2. Any scanner finding is
 - **Added `infra/modules/registry`:** the shared ECR repository `hsp-shared-backend` (immutable tags, scan on push, the same lifecycle rules as before) with its own KMS key (rotation on, 30-day deletion window, alias `alias/hsp-shared-ecr`).
   - The repository policy allows **pull only**, and only to principals in the listed dev/test accounts whose ARN matches `role/hsp-*-task-execution` or `role/hsp-*-deploy`.
   - The key policy allows `kms:Decrypt` to the same principals.
-  - Push stays with the CI build role in the same account.
+  - Push stays with the CI build role in the same account. It is enforced by an explicit Deny since the registry amendments.
 - **Added `infra/modules/ci-build`:** the GitHub OIDC provider and the CI build role `hsp-shared-ci-build`, moved unchanged from `ci-oidc`. It trusts only `repo:<owner/repo>:ref:refs/heads/main` and can push only to the shared repository and use only the shared key.
 - **Added `infra/envs/shared-services`:** `main.tf` plus `backend.hcl.example` and `terraform.tfvars.example`.
   - The provider is pinned to the shared-services account and ap-south-1, with Terraform ≥ 1.10.0.
@@ -114,49 +175,59 @@ Record each as a link to the CI run in GATE-1-REPORT §2. Any scanner finding is
 ## 6. Founder setup checklist
 
 ### 6.1 GitHub repository and teams
-- [ ] Choose the GitHub plan (see I-3). Create organisation **`homesvcplatform`** and private repository **`homesvcplatform/platform`** (the name used in Terraform examples. If different, update `github_repository` in every tfvars).
+- [x] Organisation **`homesvcplatform`** and repository **`homesvcplatform/platform`** (transferred and renamed 2026-10-08, I-7).
+- [ ] Choose the GitHub plan for the organisation (see I-3).
 - [ ] Create teams with **Write** access (CODEOWNERS requires it): `engineering`, `platform-leads`, `security`, `payments`, `voice`. **At least 2 humans** must be able to approve sensitive paths.
-- [ ] Every contributor sets up **commit signing** (SSH or GPG) before the ruleset is applied.
+- [ ] Every contributor sets up **commit signing** (SSH or GPG) before the ruleset is applied. The existing commits `6a9a529`… are unsigned. Push them before the ruleset is applied.
 - [ ] Settings → Actions → General: "Read repository contents" default workflow permissions. Don't allow Actions to approve PRs.
 - [ ] Settings → Code security: enable Dependabot alerts (and secret scanning/push protection if the plan allows).
 
 ### 6.2 Branch / ruleset protection (after the first push)
-- [ ] Commit (signed) and push the current tree to `main`.
+- [ ] Push the current `main` to `homesvcplatform/platform`.
 - [ ] Run once (repo admin, `gh` CLI authenticated): `tools/github/apply-repo-protection.sh homesvcplatform/platform`
   - creates ruleset `main-protection`: PR required, code-owner review, signed commits, linear history, no force-push/deletion, required checks `verify`, `secrets-scan`, `sast`, `sca`, `iac`, `image`, `two-reviewers-for-sensitive-paths`
-  - creates environments `dev`, `test` (deploys from protected branches only)
+  - creates environments `dev`, `test` (deploys from protected branches only; they stay unused until TE-01 closes)
 - [ ] Add **required reviewers** to environments `dev` and `test`.
 
 ### 6.3 AWS accounts (non-production only)
-- [ ] AWS Organizations with OUs: Security, **Infrastructure** (the **shared-services** account, required by I-2), **Workloads** (dev, test).
-- [ ] shared-services, dev and test accounts in region **ap-south-1**. AWS IAM Identity Center for human access (no IAM users/access keys).
-- [ ] AWS Config recorder (or Control Tower) in dev and test (I-4). CloudTrail organisation trail.
-- [ ] Note the 12-digit account IDs (shared-services, dev, test, management), the **Workloads OU ID** and the **Infrastructure OU ID** (both required by `infra/org`).
+- [x] AWS Organization, management account, OUs **Infrastructure** and **Workloads**, and `housefi-shared-services` in Infrastructure.
+- [ ] Security OU (per Phase 1 14 §2.1), when quota allows. Not required for Gate 1 proofs.
+- [ ] **TE-01:** `housefi-dev` and `housefi-test` in **Workloads** once the account quota allows. Keep the quota request open (Support case and/or a Service Quotas request for AWS Organizations).
+- [ ] AWS IAM Identity Center for human access (no IAM users/access keys). CloudTrail organisation trail.
+- [ ] AWS Config recorder (or Control Tower) in dev and test when they exist (I-4).
+- [ ] Note the 12-digit account IDs (management and shared-services now; dev and test later), the **Workloads OU ID** and the **Infrastructure OU ID** (both required by `infra/org`).
 
 ### 6.4 Terraform state buckets and apply order (Terraform ≥ 1.10)
-- [ ] One state bucket per account, created before `terraform init`, in ap-south-1: `hsp-shared-terraform-state` (shared-services), `hsp-dev-terraform-state` (dev), `hsp-test-terraform-state` (test). Each must have **Block Public Access on**, **versioning on**, **SSE-KMS** default encryption, a bucket policy denying non-TLS access, and access limited to the admin/IaC role.
-- [ ] For each of `infra/envs/{shared-services,dev,test}`: copy `backend.hcl.example` → `backend.hcl` and `terraform.tfvars.example` → `terraform.tfvars`. Both are git-ignored.
-- [ ] **1. shared-services first:** set `account_id`, `github_repository` and `consumer_account_ids = ["<dev id>", "<test id>"]`. Run `terraform -chdir=infra/envs/shared-services init -backend-config=backend.hcl` → `plan` → `apply`.
-- [ ] **2. dev, then test:** copy `terraform output workload_inputs` from shared-services into each `terraform.tfvars` (`shared_ecr_repository_arn`, `shared_ecr_repository_url`, `shared_ecr_kms_key_arn`), plus `account_id` and `github_repository`. Then `init -backend-config=backend.hcl` → `plan` → `apply`.
-- [ ] **3. org:** from the management account, `infra/org` (`management_account_id`, `workloads_ou_id`, `infrastructure_ou_id`). Apply SCPs after the accounts' baseline applies: the security-baseline SCP denies `s3:PutAccountPublicAccessBlock` to anyone except `OrganizationAccountAccessRole`.
+**Now (TE-01 open):**
+- [ ] State bucket `hsp-shared-terraform-state` in shared-services (ap-south-1): **Block Public Access on**, **versioning on**, **SSE-KMS** default encryption, a bucket policy denying non-TLS access, and access limited to the admin/IaC role. The org root uses its own state bucket in the management account, with the same settings.
+- [ ] `infra/envs/shared-services`: copy `backend.hcl.example` → `backend.hcl` and `terraform.tfvars.example` → `terraform.tfvars` (both git-ignored). Set `account_id` and `github_repository = "homesvcplatform/platform"`, and **keep `consumer_account_ids = []`**. Run `terraform -chdir=infra/envs/shared-services init -backend-config=backend.hcl` → `plan` → `apply`.
+- [ ] `infra/org` from the management account (`management_account_id`, `workloads_ou_id`, `infrastructure_ou_id`). Attaching the SCPs to the still-empty Workloads OU is fine.
+
+**Later (closes TE-01):**
+- [ ] Create `hsp-dev-terraform-state` / `hsp-test-terraform-state` in the new accounts, with the same settings.
+- [ ] **Re-apply shared-services** with `consumer_account_ids = ["<real dev id>", "<real test id>"]`. This adds the cross-account pull and decrypt statements in place.
+- [ ] dev, then test: copy `terraform output workload_inputs` from shared-services into each `terraform.tfvars` (`shared_ecr_repository_arn`, `shared_ecr_repository_url`, `shared_ecr_kms_key_arn`), plus `account_id` and `github_repository`. Then `init -backend-config=backend.hcl` → `plan` → `apply`.
+- [ ] **Order caveat:** the org SCPs will already be attached to Workloads when dev/test are created. `hsp-security-baseline` denies `s3:PutAccountPublicAccessBlock` to everyone except `OrganizationAccountAccessRole`. The guardrails module sets that block, so run the **first** dev/test apply as `OrganizationAccountAccessRole`, or that step is denied.
 
 ### 6.5 GitHub OIDC variables (no secrets are needed: OIDC replaces AWS keys)
-| Scope | Variable | Value from |
-|---|---|---|
-| Repository variable | `AWS_CI_ROLE_ARN` | **shared-services** output `github_variables.AWS_CI_ROLE_ARN` |
-| Repository variable | `ECR_REPOSITORY_URI` | **shared-services** output `github_variables.ECR_REPOSITORY_URI` |
-| Environment `dev` variables | `AWS_DEPLOY_ROLE_ARN`, `ECR_REPOSITORY_URI`, `AWS_ACCOUNT_ID`, `TASK_EXECUTION_ROLE_ARN` | dev output `github_variables` (its `ECR_REPOSITORY_URI` equals the shared one) |
-| Environment `test` variables | same four | test output `github_variables` |
-| Secrets | **none** | Never add AWS access keys to GitHub |
+| Scope | Variable | Value from | When |
+|---|---|---|---|
+| Repository variable | `AWS_CI_ROLE_ARN` | **shared-services** output `github_variables.AWS_CI_ROLE_ARN` | Now |
+| Repository variable | `ECR_REPOSITORY_URI` | **shared-services** output `github_variables.ECR_REPOSITORY_URI` | Now |
+| Environment `dev` variables | `AWS_DEPLOY_ROLE_ARN`, `ECR_REPOSITORY_URI`, `AWS_ACCOUNT_ID`, `TASK_EXECUTION_ROLE_ARN` | dev output `github_variables` (its `ECR_REPOSITORY_URI` equals the shared one) | After TE-01 |
+| Environment `test` variables | same four | test output `github_variables` | After TE-01 |
+| Secrets | **none** | Never add AWS access keys to GitHub | |
 
 ---
 
 ## 7. Exact actions to close Gate 1
-1. ~~Decide I-2 and I-1.~~ **Done:** I-1 fixed and I-2 Option A implemented (2026-10-08). Review and commit the I-1/I-2/I-6 changes (signed, once signing is set up).
-2. ~~Accept ADR-022.~~ **Done** (2026-10-08). Item #11 records I-2.
-3. ~~Decide **I-6**.~~ **Done** (2026-10-08): the existing region and security-baseline SCPs now also attach to the Infrastructure OU.
-4. Complete **§6.1–6.2**: GitHub plan, org, repo, teams, signing, first signed push, `apply-repo-protection.sh`, environment reviewers.
-5. Confirm the first CI run is green and record proofs **G1–G9** (run links) in GATE-1-REPORT §2. G5 is the first Terraform `fmt`/`validate` of the I-1/I-2/I-6 changes. Fix or formally risk-accept any scanner finding.
-6. Complete **§6.3–6.5**: AWS accounts (including shared-services), Config, state buckets, Workloads and Infrastructure OU IDs, `terraform apply` in order shared-services → dev → test → org, GitHub variables.
-7. Push to `main` and run the Deploy workflow to `dev` and `test`. Record proofs **A1–A8**.
-8. When G1–G9 and A1–A8 are all recorded: change the Gate 1 decision from **PASS WITH CONDITIONS** to **PASS**, sign the gate review, and then (separately) approve the start of Gate 2.
+1. ~~Decide I-2 and I-1.~~ **Done** (2026-10-08).
+2. ~~Accept ADR-022.~~ **Done** (2026-10-08). Item #11 records I-2 and its amendment.
+3. ~~Decide **I-6**.~~ **Done** (2026-10-08).
+4. ~~Move the repository to `homesvcplatform/platform` (I-7).~~ **Done** (2026-10-08).
+5. Commit the registry amendments and the TE-01/TE-02 docs.
+6. Complete **§6.1–6.2**: GitHub plan, teams, signing, push, `apply-repo-protection.sh`, environment reviewers.
+7. Confirm the first CI run is green and record proofs **G1–G9** (run links) in GATE-1-REPORT §2. G5 is the first Terraform `fmt`/`validate` of these changes. Fix or formally risk-accept any scanner finding. **This meets TE-02's start condition**, and Gate 2 then needs the founder's explicit "start Gate 2".
+8. Complete the **"Now"** part of §6.4 and the shared-services repository variables in §6.5. Push to `main`. Record **A1a, A3, A5, A6, A8a**.
+9. **TE-01:** when dev/test accounts exist, complete the "Later" part of §6.4 and the environment variables in §6.5. Run the Deploy workflow to `dev` and `test`. Record **A1b, A2, A4, A7, A8b**, then close TE-01.
+10. When G1–G9 and all A-proofs are recorded: change the Gate 1 decision from **PASS WITH CONDITIONS** to **PASS** and sign the gate review. TE-02 closes once the Gate 2 RDS re-run is also recorded.

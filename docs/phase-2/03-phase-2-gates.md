@@ -21,7 +21,7 @@
 | **Deliverables** | Migration runner + `squawk`. Schemas per module. **Per-process DB roles and grant matrix** (G-5). Append-only triggers. Partition templates. Core tables for slice modules (identity, customers, workforce, catalog, geo, pricing, jobs, diagnosis, matching, payments/ledger, warranty, trust minimal, compliance audit/consent/disclosure, files, platform outbox/idempotency). Key-subject registry for encrypted columns (G-7/SR-07). Query-tag fitness test. Synthetic seed loader (Kurnool test zones, catalog tree, rate-card fixtures) |
 | **Exit criteria** | DB constraint tests green: INV-01, 05, 07, 10, 11, 12, 16, 19 at SQL level. Grant matrix test (non-worker roles can't write the ledger; webhook role insert-only). Append-only UPDATE/DELETE rejected. Migrations reversible-by-forward-fix rehearsed. No PII column without a classification tag |
 | **Errata applied** | G-5, G-7 (registry + archive policy), G-8 (line types), G-9 (CHECKs), X-05, X-24 columns, X-34 columns, Q-C column |
-| **Depends on** | Gate 1 |
+| **Depends on** | Gate 1. **Temporary exception TE-02** (founder-approved 2026-10-08) lets Gate 2 start before Gate 1 is PASS, once G1–G9 are recorded and the founder says "start Gate 2". Restrictions: local/CI only, no AWS, synthetic data, Gate 3 not started, decision capped at PASS WITH CONDITIONS until an RDS re-run. See [GATE-1-CLOSURE-CHECKLIST §0](GATE-1-CLOSURE-CHECKLIST.md#0-temporary-exceptions-founder-approved-2026-10-08) |
 
 ## Gate 3: Identity, authentication, authorization
 | **Objective** | Every request is authenticated and authorised by tested policy |

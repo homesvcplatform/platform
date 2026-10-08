@@ -1,6 +1,6 @@
 # Gate 1 Review: Repository, CI/CD, security scanning, dev/test infrastructure
 
-> Date: 2026-10-08 · Decision: **PASS WITH CONDITIONS** (see §4) · Next gate (Gate 2) **not started**, awaiting founder approval.
+> Date: 2026-10-08 · Decision: **PASS WITH CONDITIONS** (see §4) · AWS workload-account proofs deferred under temporary exception **TE-01**, not waived · Gate 2 **not started**. It may start only under **TE-02** once G1–G9 are recorded and the founder says so ([closure checklist §0](GATE-1-CLOSURE-CHECKLIST.md#0-temporary-exceptions-founder-approved-2026-10-08)).
 
 ## 1. Scope delivered vs planned ([03 §Gate 1](03-phase-2-gates.md#gate-1-repository-cicd-security-scanning))
 | Planned | Delivered |
@@ -26,26 +26,29 @@
 | Deploy controls | Non-digest image refs refused (exit 2). Unverifiable signature refused (exit 1, fail-closed). `prod`/`production` targets refused by the renderer |
 | `pnpm audit` | No known vulnerabilities |
 | Workflows | 3 workflows parse. **23/23 action references pinned to full commit SHAs**. Base images pinned by digest |
-| Re-run after I-1/I-2 and I-6 (2026-10-08) | `pnpm run ci` all green again (53/53 typecheck, 0 boundary violations, 92/92 tests, no-prod guard passes with `infra/envs/shared-services`). Scripted Terraform cross-reference check of all four roots is clean. **Not** a substitute for `terraform validate`, which remains CI-only (G5) |
+| Re-run after I-1/I-2, I-6 and the registry amendments (2026-10-08) | `pnpm run ci` all green again (53/53 typecheck, 0 boundary violations, 92/92 tests, no-prod guard passes with `infra/envs/shared-services`). Scripted Terraform cross-reference check of all four roots is clean. **Not** a substitute for `terraform validate`, which remains CI-only (G5) |
 
-## 3. Not run locally (no Docker/Terraform/scanners on the workstation; no AWS/GitHub yet)
+## 3. Not run locally (no Docker/Terraform/scanners on the workstation; GitHub CI and AWS proofs not yet recorded)
 gitleaks, Semgrep, OSV-Scanner, Checkov, Trivy, Syft/cosign, `terraform fmt/validate`. Each runs in CI with a **self-test that proves the control fires**. Terraform has not yet been validated by the binary.
 
 ## 4. Conditions to close Gate 1
 | # | Condition | Owner |
 |---|---|---|
-| C1 | Create the GitHub org/repo (`homesvcplatform/…`) and teams in CODEOWNERS. Push. Run `tools/github/apply-repo-protection.sh`. **First CI run green**, including the gitleaks/Semgrep/Checkov self-tests and `terraform validate` | Founder + tech lead |
-| C2 | AWS: org + shared-services/dev/test accounts + state buckets. `terraform apply` shared-services, then dev/test. Apply `infra/org` SCPs. Set the GitHub variables from the `github_variables` outputs (repository-level ones from shared-services) | Founder / DevOps |
-| C3 | With AWS live: `supply-chain-selftest` refuses an unsigned image. A manual `ecs:RegisterTaskDefinition` by a non-deploy role is denied (SCP). Config rule shows no public buckets. The same signed digest deploys to dev **and** test from the shared registry, and other principals can't pull or push (A7, A8). Commit `.terraform.lock.hcl` | DevOps |
+| C1 | GitHub org/repo `homesvcplatform/platform` **done** (I-7). Create the teams in CODEOWNERS. Push. Run `tools/github/apply-repo-protection.sh`. **First CI run green**, including the gitleaks/Semgrep/Checkov self-tests and `terraform validate` | Founder + tech lead |
+| C2 | AWS **now:** state bucket, `terraform apply` shared-services (`consumer_account_ids = []`) and `infra/org`, and the repository variables from shared-services. Record A1a, A3, A5, A6, A8a. **After TE-01:** dev/test accounts, re-apply shared-services with their real IDs, apply dev/test, and set the environment variables | Founder / DevOps |
+| C3 | **Blocked by TE-01:** a manual `ecs:RegisterTaskDefinition` by a non-deploy role is denied (SCP, A4). Config rule shows no public buckets (A2). dev/test apply (A1b). The same signed digest deploys to dev **and** test from the shared registry (A7), and other dev principals can't pull (A8b). Commit `.terraform.lock.hcl` | DevOps |
 | ~~C4~~ | ~~Decide I-6~~ **Resolved 2026-10-08:** the existing `hsp-region-allowlist` and `hsp-security-baseline` SCPs also attach to the Infrastructure OU (shared-services). No new policy text. Still to be proven in AWS (A3) | Founder |
 
 ## 4a. Architecture changes recorded in this gate
 - **ADR-022** (Accepted by the founder 2026-10-08). I-1 fixed (Terraform >= 1.10.0). **I-2 Option A implemented** (ADR-022 #11): one shared registry `hsp-shared-backend` and CI build role `hsp-shared-ci-build` in `infra/envs/shared-services`. dev/test pull cross-account via explicit `shared_ecr_*` inputs, and the per-environment ECR repositories and `ecr` keys are removed. Exact change set: [closure checklist §5](GATE-1-CLOSURE-CHECKLIST.md#i-2-change-set-exactly-what-changed). **I-6 resolved:** the existing region and security-baseline SCPs also attach to the Infrastructure OU ([change set](GATE-1-CLOSURE-CHECKLIST.md#i-6-change-set-exactly-what-changed)). Dependency-inversion ports `MaterialUsageRecorder`/`BillIssuer` (TCP-2/TCP-3, owned by `jobs`) and `OtpSender` (owned by `identity`) keep the module graph acyclic without changing transaction semantics. Also records toolchain pins, Node type stripping, framework timing, the distroless image, keyless signing, X86_64 and naming.
-- Closure steps, proof separation (local / GitHub CI / AWS) and the issues found during closure prep (I-1…I-5, including the ECR placement deviation from Phase 1 14 §2.1): [GATE-1-CLOSURE-CHECKLIST.md](GATE-1-CLOSURE-CHECKLIST.md).
+- **Registry amendments** (2026-10-08, ADR-022 #11 amendment): the consumer-account list may be empty (no cross-account access) until dev/test exist, and an explicit repository-policy Deny means only `hsp-shared-ci-build` can push ([details](GATE-1-CLOSURE-CHECKLIST.md#registry-amendments-2026-10-08-founder-approved-with-the-te-01-decision)).
+- **Temporary exceptions** (not architecture changes): **TE-01** defers the AWS workload-account proofs while the AWS Organizations account quota blocks creating dev/test. The architecture is unchanged and no accounts are consolidated. **TE-02** allows Gate 2 to start, restricted, before Gate 1 is PASS ([closure checklist §0](GATE-1-CLOSURE-CHECKLIST.md#0-temporary-exceptions-founder-approved-2026-10-08)).
+- Closure steps, proof separation (local / GitHub CI / AWS) and the issues found during closure prep (I-1…I-8): [GATE-1-CLOSURE-CHECKLIST.md](GATE-1-CLOSURE-CHECKLIST.md).
 
 ## 5. Security notes / threat-model delta
 - New: dependency on public Sigstore (Fulcio/Rekor) for keyless signing (ADR-022 #7).
-- New (I-2): image pulls cross an account boundary. Shared registry access is limited by repository and key policies to `hsp-*-task-execution`/`hsp-*-deploy` roles in the listed dev/test accounts (pull only). The shared-services account becomes supply-chain critical, and it now gets the region and security-baseline SCPs through the Infrastructure OU (I-6).
+- New (I-2): image pulls cross an account boundary. Shared registry access is limited by repository and key policies to `hsp-*-task-execution`/`hsp-*-deploy` roles in the listed dev/test accounts (pull only). The shared-services account becomes supply-chain critical, and it now gets the region and security-baseline SCPs through the Infrastructure OU (I-6). Push is denied by an explicit repository-policy Deny to everyone except the CI build role, including same-account administrators (A8a).
+- TE-01 risk: the dev/test Terraform stays unexercised in AWS longer. TE-02 risk: Gate 2 DB work is proven on containers, not RDS, until the required RDS re-run.
 - Valkey AUTH token passes through Terraform state (random_password). The state bucket must be KMS-encrypted with restricted access (backend example sets `encrypt = true`).
 - Gate 1 logger is a conservative token-based denylist. The full allowlist + canary-PII scanning arrives at Gate 3.
 

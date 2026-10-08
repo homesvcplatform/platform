@@ -22,7 +22,7 @@ variable "github_repository" {
 
 variable "consumer_account_ids" {
   type        = list(string)
-  description = "dev and test workload account ids allowed to pull images."
+  description = "dev and test workload account ids allowed to pull images. Empty until those accounts exist (TE-01). Never placeholders."
 }
 
 variable "create_oidc_provider" {
