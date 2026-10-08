@@ -76,6 +76,12 @@ describe('fixture crypto', () => {
     expect(() => decryptFixture(env)).toThrow();
   });
 
+  it('rejects a truncated envelope or a short authentication tag', () => {
+    const env = encryptFixture('synthetic');
+    expect(() => decryptFixture(env.subarray(0, 20))).toThrow(/truncated/);
+    expect(() => decryptFixture(env.subarray(0, env.length - 4))).toThrow();
+  });
+
   it('derives stable 16-byte blind indexes and masks phones', () => {
     expect(blindIndexFixture('+910000000101')).toHaveLength(16);
     expect(blindIndexFixture(' +910000000101 ').equals(blindIndexFixture('+910000000101'))).toBe(true);
