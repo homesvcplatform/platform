@@ -13,7 +13,7 @@
 | **Deliverables** | Monorepo per [02](02-repository-structure.md). Empty module packages with `public` entries. Boundary rules B1–B12 wired. CI pipeline (lint, typecheck, unit, dependency-cruiser, gitleaks, Semgrep, OSV, Trivy, Checkov, SBOM, cosign signing). IaC for `dev`/`test` (VPC, ECS cluster, RDS, Valkey, S3 with Block Public Access, KMS keys per data class, Secrets Manager, OIDC deploy roles). Signed-image deploy path (SR-16). CODEOWNERS. PR template |
 | **Exit criteria** | A deliberate boundary violation fails CI. A planted fake secret fails CI. An unsigned image can't be deployed (test). A non-pipeline role can't register a task definition (test in `dev`). S3 public-access attempt denied (Config rule). `dev` and `test` environments reachable only as designed |
 | **Errata applied** | SR-16, SR-11 (no CORS middleware by default), X-26 |
-| **Depends on** | Founder approval of Phase 2. AWS org/accounts, GitHub org (founder action) |
+| **Depends on** | Founder approval of Phase 2. AWS org/accounts, GitHub org (founder action). **AWS deployment deferred by founder decision (2026-10-09)**: the AWS-dependent exit criteria are deferred under TE-01, and development uses the `local` and CI environments ([GATE-1-CLOSURE-CHECKLIST §0](GATE-1-CLOSURE-CHECKLIST.md#0-temporary-exceptions-founder-approved-2026-10-08)) |
 
 ## Gate 2: Database foundation, migrations, constraints
 | **Objective** | Schemas, roles, grants and core constraints proven by tests |
