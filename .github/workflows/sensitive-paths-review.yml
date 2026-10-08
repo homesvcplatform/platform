@@ -28,7 +28,22 @@ jobs:
           files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename')
           if ! echo "$files" | grep -Eq "$sensitive"; then echo "No sensitive paths changed."; exit 0; fi
           echo "Sensitive paths changed:"; echo "$files" | grep -E "$sensitive"
-          approvals=$(gh api --paginate "repos/$REPO/pulls/$PR/reviews" \
-            --jq '[group_by(.user.login)[] | max_by(.submitted_at) | select(.state == "APPROVED")] | length')
-          echo "Distinct current approvals: $approvals"
-          if [ "$approvals" -lt 2 ]; then echo "::error::Sensitive paths require 2 approving reviews"; exit 1; fi
+          # Only approvals that GitHub itself would treat as binding count: each reviewer's LATEST review must be
+          # APPROVED (dismissed/stale approvals don't count), the reviewer must not be the PR author, and the reviewer
+          # must have write (or admin) access. On a public repository anyone can submit an "Approve" review, so
+          # without the permission check two outsiders could satisfy this rule. Unknown permission fails closed.
+          author=$(gh api "repos/$REPO/pulls/$PR" --jq '.user.login')
+          latest_approvers=$(gh api --paginate "repos/$REPO/pulls/$PR/reviews" \
+              --jq '.[] | select(.submitted_at != null) | [.user.login, .submitted_at, .state] | @tsv' \
+            | sort -k1,1 -k2,2 | awk -F'\t' '{last[$1]=$3} END {for (u in last) if (last[u]=="APPROVED") print u}')
+          approvals=0
+          for user in $latest_approvers; do
+            if [ "$user" = "$author" ]; then echo "Ignored: $user is the PR author"; continue; fi
+            perm=$(gh api "repos/$REPO/collaborators/$user/permission" --jq '.permission' 2>/dev/null || echo none)
+            case "$perm" in
+              admin|write) approvals=$((approvals + 1)); echo "Counted approval: $user ($perm)" ;;
+              *) echo "Ignored approval from $user: no write access ($perm)" ;;
+            esac
+          done
+          echo "Binding approvals from people with write access: $approvals"
+          if [ "$approvals" -lt 2 ]; then echo "::error::Sensitive paths require 2 approving reviews from people with write access"; exit 1; fi

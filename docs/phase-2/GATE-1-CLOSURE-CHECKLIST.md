@@ -1,12 +1,13 @@
 # Gate 1 Closure Checklist
 
 > **Gate 1 status: PASS WITH CONDITIONS**, unchanged until every external proof in §3 and §4 is recorded. The AWS workload-account proofs are deferred under temporary exception **TE-01** (§0). They are not waived.
-> Gate 2: **not started.** It may start only under **TE-02** (§0), once G1–G9 are recorded. No scanner (gitleaks, Semgrep, OSV-Scanner, Checkov, Trivy) is claimed to pass until it has run in GitHub CI.
+> Gate 2: **not started.** It may start only under **TE-02** (§0), once G1–G9 are recorded. **G1–G6 are proven in GitHub CI** ([run 37822630219](https://github.com/homesvcplatform/platform/actions/runs/37822630219), 2026-10-08). G7–G9 are still pending. No scanner is claimed to pass beyond what the logs of that run show.
 > Prepared 2026-10-08. Updated 2026-10-08 after the founder's decisions:
 > - ADR-022 accepted.
 > - I-1 fixed, I-2 Option A implemented, I-6 resolved.
 > - Repository transferred to `homesvcplatform/platform`.
 > - AWS account quota decision: TE-01/TE-02 recorded, registry amendments made.
+> - First green GitHub CI run recorded: G1–G6 PASS (§3).
 >
 > Companion to [GATE-1-REPORT.md](GATE-1-REPORT.md).
 
@@ -74,20 +75,28 @@ Gate 1's structural changes are recorded in [ADR-022](../phase-1/15-architecture
 
 ---
 
-## 3. Must be proven in GitHub CI (all possible now; no TE-01 impact)
-| # | Proof | Pass criterion |
-|---|---|---|
-| G1 | `verify` job | Green on a clean runner (frozen lockfile install, full `pnpm run ci`) |
-| G2 | `secrets-scan` | gitleaks over full history finds nothing **and** the planted-secret self-test step reports "Planted secret detected as expected" |
-| G3 | `sast` | Semgrep (registry default + project rules) finds nothing blocking **and** the planted-code self-test flags the insecure file |
-| G4 | `sca` | OSV-Scanner reports no known vulnerabilities in `pnpm-lock.yaml` |
-| G5 | `iac` | `terraform fmt -check` and `validate` pass for `envs/shared-services`, `envs/dev`, `envs/test`, `org` (first time any Terraform binary checks the I-1/I-2/I-6 changes and the registry amendments). Checkov passes on `infra/`, including the `registry` and `ci-build` modules, **and** the insecure-fixture self-test reports failed checks |
-| G6 | `image` | Docker build succeeds. Trivy finds no fixable HIGH/CRITICAL issues. CycloneDX SBOM artifact uploaded |
-| G7 | Ruleset enforcement | Direct push to `main` rejected. A PR can't merge with any required check red. An unsigned commit is rejected. Code-owner review is required and the `@homesvcplatform/*` teams resolve |
-| G8 | Boundary check blocks a PR | A throwaway PR that adds a deep cross-module import → `verify` red (then close the PR) |
-| G9 | Two-approval rule | A throwaway PR touching `infra/` with one approval → `two-reviewers-for-sensitive-paths` red. With two approvals → green |
+## 3. Must be proven in GitHub CI (no TE-01 impact)
+**Evidence run:** [CI run 37822630219](https://github.com/homesvcplatform/platform/actions/runs/37822630219) on `main`, commit `f24d451` (2026-10-08). Every job succeeded. `supply-chain-selftest` was skipped by design because the AWS repository variables don't exist yet (that is proof A6, §4). Each result below was read from that run's job log on GitHub.
 
-Record each as a link to the CI run in GATE-1-REPORT §2. Any scanner finding is fixed or explicitly risk-accepted before closure.
+| # | Proof | Pass criterion | Status | Evidence (from the job log) |
+|---|---|---|---|---|
+| G1 | `verify` job | Green on a clean runner (frozen lockfile install, full `pnpm run ci`) | **PASS** | `pnpm install --frozen-lockfile` (lockfile up to date) · no-prod guard passed · workspace check passed · typecheck 53/53 · dependency-cruiser 0 violations (83 modules) · Vitest 92/92 |
+| G2 | `secrets-scan` | gitleaks over full history finds nothing **and** the planted-secret self-test step reports "Planted secret detected as expected" | **PASS** | gitleaks: 6 commits scanned, "no leaks found". Self-test: "leaks found: 1", "Planted secret detected as expected." |
+| G3 | `sast` | Semgrep (registry default + project rules) finds nothing blocking **and** the planted-code self-test flags the insecure file | **PASS** | Semgrep 1.180.0: 368 rules on 326 files, 0 findings. Self-test: 3 blocking findings on the planted file, "Planted insecure code flagged as expected." |
+| G4 | `sca` | OSV-Scanner reports no known vulnerabilities in `pnpm-lock.yaml` | **PASS** | OSV-Scanner v2.6.0: "Scanned /src/pnpm-lock.yaml file and found 205 packages", "No issues found" |
+| G5 | `iac` | `terraform fmt -check` and `validate` pass for `envs/shared-services`, `envs/dev`, `envs/test`, `org`. Checkov passes on `infra/` **and** the insecure-fixture self-test reports failed checks | **PASS** | Terraform 1.16.5: `fmt -check` passed, and "Success! The configuration is valid." for all 4 roots. Checkov 3.3.26: 496 passed, **0 failed**, 43 skipped (each an inline justified skip). Self-test: 3 resources, 14 failed checks, "flagged as expected" |
+| G6 | `image` | Docker build succeeds. Trivy finds no fixable HIGH/CRITICAL issues. CycloneDX SBOM artifact uploaded | **PASS** | Image built (runtime Debian 13.7, distroless). Trivy v0.75.0: 0 findings (OS and Node packages). SBOM artifact `hsp-backend_<sha>.cyclonedx.json` uploaded. **Not pushed or signed**, because AWS isn't configured; push and signing are proof A5 |
+| G7 | Ruleset enforcement | Direct push to `main` rejected. A PR can't merge with any required check red. An unsigned commit is rejected. Code-owner review is required and the `@homesvcplatform/*` teams resolve | **PENDING (GitHub setup)** | Not proven. The ruleset isn't applied yet; commits so far were pushed directly to `main`, before protection, as planned in §6.2. Needs the GitHub plan (I-3), the teams, commit signing and `apply-repo-protection.sh` |
+| G8 | Boundary check blocks a PR | A throwaway PR that adds a deep cross-module import → `verify` red (then close the PR) | **PENDING (GitHub test)** | Not proven in CI. Proven locally only (§2: planted violations make `pnpm run arch` exit 4). Needs a throwaway PR |
+| G9 | Two-approval rule | A throwaway PR touching `infra/` with one approval → `two-reviewers-for-sensitive-paths` red. With two approvals → green | **PENDING (GitHub setup + test)** | Not proven. **Control fixed 2026-10-08, before testing:** the check counted approvals from anyone. On this public repo any GitHub user can submit an "Approve" review, so two outsiders could have satisfied it. It now counts only each reviewer's latest APPROVED review from people with write/admin access, excluding the PR author, and fails closed if the permission is unknown. The workflow has run on the Dependabot PRs, but they touch no sensitive path. Needs two humans with write access and a throwaway PR touching `infra/` |
+
+**Earlier runs (failed, fixed, kept for the record):**
+- **Run 37819790355** (`6ea5830`) failed `iac`, `sast` and `image`.
+- **Run 37822219298** (`4971643`) failed only the Checkov self-test assertion.
+
+The root causes and fixes are in commits `4971643` and `f24d451`, summarised in [GATE-1-REPORT §2a](GATE-1-REPORT.md#2a-github-ci-evidence-2026-10-08). No check was weakened.
+
+**Caveat:** Semgrep's `p/default` and the vulnerability databases (OSV, Trivy) change over time. A later red run may be a newly published rule or CVE, not a regression. Any scanner finding is fixed or explicitly risk-accepted before closure.
 
 ## 4. Must be proven in AWS
 | # | Proof | Pass criterion | Status |
@@ -225,9 +234,9 @@ Record each as a link to the CI run in GATE-1-REPORT §2. Any scanner finding is
 2. ~~Accept ADR-022.~~ **Done** (2026-10-08). Item #11 records I-2 and its amendment.
 3. ~~Decide **I-6**.~~ **Done** (2026-10-08).
 4. ~~Move the repository to `homesvcplatform/platform` (I-7).~~ **Done** (2026-10-08).
-5. Commit the registry amendments and the TE-01/TE-02 docs.
+5. ~~Commit the registry amendments and the TE-01/TE-02 docs.~~ **Done** (`6ea5830`).
 6. Complete **§6.1–6.2**: GitHub plan, teams, signing, push, `apply-repo-protection.sh`, environment reviewers.
-7. Confirm the first CI run is green and record proofs **G1–G9** (run links) in GATE-1-REPORT §2. G5 is the first Terraform `fmt`/`validate` of these changes. Fix or formally risk-accept any scanner finding. **This meets TE-02's start condition**, and Gate 2 then needs the founder's explicit "start Gate 2".
+7. ~~Confirm the first CI run is green~~ **Done:** G1–G6 PASS in [run 37822630219](https://github.com/homesvcplatform/platform/actions/runs/37822630219) (§3). **Remaining:** G7, G8, G9, which need §6.1–6.2 plus throwaway PRs. When G7–G9 are recorded, TE-02's start condition is met, and Gate 2 then needs the founder's explicit "start Gate 2".
 8. Complete the **"Now"** part of §6.4 and the shared-services repository variables in §6.5. Push to `main`. Record **A1a, A3, A5, A6, A8a**.
 9. **TE-01:** when dev/test accounts exist, complete the "Later" part of §6.4 and the environment variables in §6.5. Run the Deploy workflow to `dev` and `test`. Record **A1b, A2, A4, A7, A8b**, then close TE-01.
 10. When G1–G9 and all A-proofs are recorded: change the Gate 1 decision from **PASS WITH CONDITIONS** to **PASS** and sign the gate review. TE-02 closes once the Gate 2 RDS re-run is also recorded.

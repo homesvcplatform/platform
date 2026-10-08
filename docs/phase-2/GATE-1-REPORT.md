@@ -1,6 +1,6 @@
 # Gate 1 Review: Repository, CI/CD, security scanning, dev/test infrastructure
 
-> Date: 2026-10-08 · Decision: **PASS WITH CONDITIONS** (see §4) · AWS workload-account proofs deferred under temporary exception **TE-01**, not waived · Gate 2 **not started**. It may start only under **TE-02** once G1–G9 are recorded and the founder says so ([closure checklist §0](GATE-1-CLOSURE-CHECKLIST.md#0-temporary-exceptions-founder-approved-2026-10-08)).
+> Date: 2026-10-08 · Decision: **PASS WITH CONDITIONS** (see §4) · GitHub CI G1–G6 **PASS** (§2a); G7–G9 pending · AWS workload-account proofs deferred under temporary exception **TE-01**, not waived · Gate 2 **not started**. It may start only under **TE-02** once G1–G9 are recorded and the founder says so ([closure checklist §0](GATE-1-CLOSURE-CHECKLIST.md#0-temporary-exceptions-founder-approved-2026-10-08)).
 
 ## 1. Scope delivered vs planned ([03 §Gate 1](03-phase-2-gates.md#gate-1-repository-cicd-security-scanning))
 | Planned | Delivered |
@@ -28,13 +28,41 @@
 | Workflows | 3 workflows parse. **23/23 action references pinned to full commit SHAs**. Base images pinned by digest |
 | Re-run after I-1/I-2, I-6 and the registry amendments (2026-10-08) | `pnpm run ci` all green again (53/53 typecheck, 0 boundary violations, 92/92 tests, no-prod guard passes with `infra/envs/shared-services`). Scripted Terraform cross-reference check of all four roots is clean. **Not** a substitute for `terraform validate`, which remains CI-only (G5) |
 
-## 3. Not run locally (no Docker/Terraform/scanners on the workstation; GitHub CI and AWS proofs not yet recorded)
-gitleaks, Semgrep, OSV-Scanner, Checkov, Trivy, Syft/cosign, `terraform fmt/validate`. Each runs in CI with a **self-test that proves the control fires**. Terraform has not yet been validated by the binary.
+## 2a. GitHub CI evidence (2026-10-08)
+**[CI run 37822630219](https://github.com/homesvcplatform/platform/actions/runs/37822630219)** on `main`, commit `f24d451`. Every job succeeded. `supply-chain-selftest` was skipped by design because there are no AWS variables yet (A6, TE-01). Each line was read from the job logs:
+| Proof | Result |
+|---|---|
+| G1 `verify` | **PASS**: frozen install, no-prod guard, workspace check, typecheck 53/53, 0 boundary violations, 92/92 tests |
+| G2 `secrets-scan` | **PASS**: gitleaks full history (6 commits) no leaks; planted-secret self-test detected |
+| G3 `sast` | **PASS**: Semgrep 1.180.0, 368 rules, 0 findings; planted-code self-test 3 findings |
+| G4 `sca` | **PASS**: OSV-Scanner v2.6.0, 205 packages, no issues |
+| G5 `iac` | **PASS**: `terraform fmt` and `validate` for all 4 roots (first binary validation of the Terraform); Checkov 3.3.26 496 passed / 0 failed / 43 justified skips; fixture self-test 14 failures |
+| G6 `image` | **PASS**: build OK, Trivy v0.75.0 0 findings, CycloneDX SBOM uploaded. Not pushed or signed (A5 needs AWS) |
+| G7, G8, G9 | **PENDING**: need the ruleset, teams, signing and throwaway PRs ([closure checklist §3](GATE-1-CLOSURE-CHECKLIST.md#3-must-be-proven-in-github-ci-no-te-01-impact)) |
+
+**How it got green.** The first run (37819790355, `6ea5830`) failed three jobs, all fixed at the root in `4971643` and `f24d451` without weakening any check:
+- **`image` (Trivy):** the distroless `nodejs24-debian12` runtime ships OpenSSL 3.0.18 (CVE-2026-31789 critical, plus 5 high), and no patched build of that image exists.
+  - The runtime base moved to `gcr.io/distroless/nodejs24-debian13:nonroot`, pinned by digest, with `libssl3t64 3.5.7-1~deb13u3`, which Debian lists as fixed.
+  - It is still a distroless, non-root Node 24 image (ADR-022 #6 unchanged in substance).
+- **`sast` (Semgrep, 9 findings):** these came from new supply-chain rules in `p/default`.
+  - Added a 7-day release-age gate: Dependabot `cooldown`, `.npmrc` `min-release-age`, pnpm `minimumReleaseAge`.
+  - Added pnpm `trustPolicy: no-downgrade` and `blockExoticSubdeps: true`.
+  - Added one justified `nosemgrep` for KMS rotation on the asymmetric JWT signing key. AWS can't auto-rotate SIGN_VERIFY keys; this mirrors the existing CKV_AWS_7 skip.
+- **`iac` (Checkov, 35 failures):**
+  - **Real tightening:** the deploy role's ECR reads moved from `"*"` to the shared repository, and `ecs:TagResource` to its own task definitions.
+  - `github_repository` defaults to `homesvcplatform/platform` and is validated as an exact `owner/repo`, so the OIDC `sub` conditions are concrete.
+  - The three Mumbai AZs are allowlisted.
+  - Bucket sub-resources now reference `aws_s3_bucket.this[each.key]`, so the existing encryption, versioning, logging, public-access block and lifecycle settings are linked. 30 findings were linkage false positives.
+  - A justified skip on the not-yet-attached app security group, to be removed at Gate 3.
+- **Second run (37822219298, `4971643`):** only the Checkov self-test failed. It scanned 0 resources because the repo's `.checkov.yaml` (auto-loaded from the working directory) had `skip-path: .selftest`, which hid the planted fixture. That Gate 1 mistake meant the self-test could never have caught a broken Checkov. Removing the skip-path fixed it (`f24d451`).
+
+## 3. Not run locally (no Docker/Terraform/scanners on the workstation)
+gitleaks, Semgrep, OSV-Scanner, Checkov, Trivy, Syft/cosign and `terraform fmt/validate` run in GitHub CI only, each with a **self-test that proves the control fires**. They have now run and passed in CI (§2a). cosign signing hasn't run yet: it needs AWS (A5).
 
 ## 4. Conditions to close Gate 1
 | # | Condition | Owner |
 |---|---|---|
-| C1 | GitHub org/repo `homesvcplatform/platform` **done** (I-7). Create the teams in CODEOWNERS. Push. Run `tools/github/apply-repo-protection.sh`. **First CI run green**, including the gitleaks/Semgrep/Checkov self-tests and `terraform validate` | Founder + tech lead |
+| C1 | GitHub org/repo `homesvcplatform/platform` **done** (I-7). Pushed; **first CI run green: G1–G6 PASS** (§2a). Remaining: plan (I-3), the teams in CODEOWNERS, commit signing, run `tools/github/apply-repo-protection.sh`, then prove G7–G9 with throwaway PRs | Founder + tech lead |
 | C2 | AWS **now:** state bucket, `terraform apply` shared-services (`consumer_account_ids = []`) and `infra/org`, and the repository variables from shared-services. Record A1a, A3, A5, A6, A8a. **After TE-01:** dev/test accounts, re-apply shared-services with their real IDs, apply dev/test, and set the environment variables | Founder / DevOps |
 | C3 | **Blocked by TE-01:** a manual `ecs:RegisterTaskDefinition` by a non-deploy role is denied (SCP, A4). Config rule shows no public buckets (A2). dev/test apply (A1b). The same signed digest deploys to dev **and** test from the shared registry (A7), and other dev principals can't pull (A8b). Commit `.terraform.lock.hcl` | DevOps |
 | ~~C4~~ | ~~Decide I-6~~ **Resolved 2026-10-08:** the existing `hsp-region-allowlist` and `hsp-security-baseline` SCPs also attach to the Infrastructure OU (shared-services). No new policy text. Still to be proven in AWS (A3) | Founder |
