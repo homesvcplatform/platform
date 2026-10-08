@@ -31,7 +31,12 @@ DB tests run only in GitHub Actions (`pnpm run test:db` in the required `verify`
 **GitHub CI [run 37846988688](https://github.com/homesvcplatform/platform/actions/runs/37846988688)** (commit `1bad0f9`), read from the job logs: `verify` PASS (no-prod and workspace guards, SQL-ownership guard, lint, typecheck, 0 boundary violations, **134/134** unit tests, squawk "0 issues in 25 files", **test:db 7 files / 76/76 tests**). `secrets-scan`, `sca`, `iac` and `image` PASS. `sast` **FAILED** with 2 Semgrep findings in the fixture crypto (§4). They were fixed at the root, not suppressed. The follow-up commit's run is in §2a.
 
 ### 2a. Re-run after the SAST fix
-Recorded in the PR #5 checks; see §7.
+**[CI run 37847727389](https://github.com/homesvcplatform/platform/actions/runs/37847727389)** (commit `20dd0af`): **every job succeeded**. `supply-chain-selftest` was skipped by design (no AWS, TE-01). Read from the job logs:
+| Job | Result |
+|---|---|
+| `verify` | **PASS**: guards, lint, typecheck, 0 boundary violations (113 modules), **135/135** unit tests, squawk "Found 0 issues in 25 files", **test:db 7 files / 76/76 tests** (invariants 27, grants 16, classification 10, migrations 8, seed 7, append-only 4, partitions 4) |
+| `sast` | **PASS**: Semgrep 368 rules on 383 files, **0 findings**; planted-code self-test still detects 3 |
+| `secrets-scan`, `sca`, `iac`, `image` | **PASS** |
 
 ## 3. Errata applied
 G-5 (per-process grants, worker-only ledger writes) · G-7 (key-subject registry + archive policy) · G-8 (bill / quote line types, credit-line signs, sums at commit) · G-9 (CHECKs: ops-recorded approval separation of duties) · X-05 (`preferred_locale` has no default) · X-24 / X-34 (payment preference and on-site adult required, closed sets) · Q-C (`preferred_language` te / en / other). Deviations from the Phase 1 DDL text are listed in ADR-023 #7. Each one tightens the rules or makes the spec compilable.
@@ -60,4 +65,4 @@ G-5 (per-process grants, worker-only ledger writes) · G-7 (key-subject registry
 4. Gate 1 conditions are unchanged: G7 is interim (TE-03), G8 / G9 are pending, and the AWS proofs are deferred (TE-01).
 
 ## 7. Decision
-**PASS WITH CONDITIONS**, provided every PR #5 check is green on GitHub. Approver: founder (on merge of PR #5). Gate 3 not started.
+**PASS WITH CONDITIONS**. Every PR #5 check is green on GitHub (§2a). The conditions are in §6. Approver: founder (on merge of PR #5). Gate 3 not started.
