@@ -1,6 +1,6 @@
 # Gate 1 Review: Repository, CI/CD, security scanning, dev/test infrastructure
 
-> Date: 2026-10-08 · Decision: **PASS WITH CONDITIONS** (see §4) · GitHub CI G1–G6 **PASS** (§2a); G7–G9 pending · AWS workload-account proofs deferred under temporary exception **TE-01**, not waived · Gate 2 **not started**. It may start only under **TE-02** once G1–G9 are recorded and the founder says so ([closure checklist §0](GATE-1-CLOSURE-CHECKLIST.md#0-temporary-exceptions-founder-approved-2026-10-08)).
+> Date: 2026-10-08 · Decision: **PASS WITH CONDITIONS** (see §4) · GitHub CI G1–G6 **PASS** (§2a); G7 **partial** (interim ruleset, TE-03); G8–G9 pending · AWS workload-account proofs deferred under temporary exception **TE-01**, not waived · Gate 2 **not started**. It may start only under **TE-02** once G1–G9 are recorded and the founder says so ([closure checklist §0](GATE-1-CLOSURE-CHECKLIST.md#0-temporary-exceptions-founder-approved-2026-10-08)).
 
 ## 1. Scope delivered vs planned ([03 §Gate 1](03-phase-2-gates.md#gate-1-repository-cicd-security-scanning))
 | Planned | Delivered |
@@ -38,7 +38,8 @@
 | G4 `sca` | **PASS**: OSV-Scanner v2.6.0, 205 packages, no issues |
 | G5 `iac` | **PASS**: `terraform fmt` and `validate` for all 4 roots (first binary validation of the Terraform); Checkov 3.3.26 496 passed / 0 failed / 43 justified skips; fixture self-test 14 failures |
 | G6 `image` | **PASS**: build OK, Trivy v0.75.0 0 findings, CycloneDX SBOM uploaded. Not pushed or signed (A5 needs AWS) |
-| G7, G8, G9 | **PENDING**: need the ruleset, teams, signing and throwaway PRs ([closure checklist §3](GATE-1-CLOSURE-CHECKLIST.md#3-must-be-proven-in-github-ci-no-te-01-impact)) |
+| G7 | **PARTIAL** (TE-03): interim ruleset `main-protection-interim` (id 24743658) active and verified by API read-back. Live rejection test pending (founder). Approval and code-owner rules deferred until there are more members |
+| G8, G9 | **PENDING**: need real additional members and throwaway PRs ([closure checklist §3](GATE-1-CLOSURE-CHECKLIST.md#3-must-be-proven-in-github-ci-no-te-01-impact)) |
 
 **How it got green.** The first run (37819790355, `6ea5830`) failed three jobs, all fixed at the root in `4971643` and `f24d451` without weakening any check:
 - **`image` (Trivy):** the distroless `nodejs24-debian12` runtime ships OpenSSL 3.0.18 (CVE-2026-31789 critical, plus 5 high), and no patched build of that image exists.
@@ -70,6 +71,7 @@ gitleaks, Semgrep, OSV-Scanner, Checkov, Trivy, Syft/cosign and `terraform fmt/v
 ## 4a. Architecture changes recorded in this gate
 - **ADR-022** (Accepted by the founder 2026-10-08). I-1 fixed (Terraform >= 1.10.0). **I-2 Option A implemented** (ADR-022 #11): one shared registry `hsp-shared-backend` and CI build role `hsp-shared-ci-build` in `infra/envs/shared-services`. dev/test pull cross-account via explicit `shared_ecr_*` inputs, and the per-environment ECR repositories and `ecr` keys are removed. Exact change set: [closure checklist §5](GATE-1-CLOSURE-CHECKLIST.md#i-2-change-set-exactly-what-changed). **I-6 resolved:** the existing region and security-baseline SCPs also attach to the Infrastructure OU ([change set](GATE-1-CLOSURE-CHECKLIST.md#i-6-change-set-exactly-what-changed)). Dependency-inversion ports `MaterialUsageRecorder`/`BillIssuer` (TCP-2/TCP-3, owned by `jobs`) and `OtpSender` (owned by `identity`) keep the module graph acyclic without changing transaction semantics. Also records toolchain pins, Node type stripping, framework timing, the distroless image, keyless signing, X86_64 and naming.
 - **Registry amendments** (2026-10-08, ADR-022 #11 amendment): the consumer-account list may be empty (no cross-account access) until dev/test exist, and an explicit repository-policy Deny means only `hsp-shared-ci-build` can push ([details](GATE-1-CLOSURE-CHECKLIST.md#registry-amendments-2026-10-08-founder-approved-with-the-te-01-decision)).
+- **TE-03** (2026-10-08): with a single organisation member, an interim ruleset enforces everything that doesn't need a second person (PR + 6 required checks, signed and linear history, no force push or deletion, squash only). Approval and code-owner rules wait until there are at least 3 Write-access members. The final `main-protection.json` is unchanged ([closure checklist §0](GATE-1-CLOSURE-CHECKLIST.md#te-03-interim-ruleset-while-the-organisation-has-a-single-member)).
 - **Temporary exceptions** (not architecture changes): **TE-01** defers the AWS workload-account proofs while the AWS Organizations account quota blocks creating dev/test. The architecture is unchanged and no accounts are consolidated. **TE-02** allows Gate 2 to start, restricted, before Gate 1 is PASS ([closure checklist §0](GATE-1-CLOSURE-CHECKLIST.md#0-temporary-exceptions-founder-approved-2026-10-08)).
 - Closure steps, proof separation (local / GitHub CI / AWS) and the issues found during closure prep (I-1…I-8): [GATE-1-CLOSURE-CHECKLIST.md](GATE-1-CLOSURE-CHECKLIST.md).
 

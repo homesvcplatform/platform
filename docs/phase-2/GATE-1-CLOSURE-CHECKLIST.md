@@ -8,6 +8,7 @@
 > - Repository transferred to `homesvcplatform/platform`.
 > - AWS account quota decision: TE-01/TE-02 recorded, registry amendments made.
 > - First green GitHub CI run recorded: G1–G6 PASS (§3).
+> - G7 partial: interim ruleset applied for single-member operation (TE-03, §0).
 >
 > Companion to [GATE-1-REPORT.md](GATE-1-REPORT.md).
 
@@ -44,6 +45,16 @@
 | **Restrictions** | (1) **Scope:** Gate 2 deliverables only. **Gate 3 does not start** until Gate 1 is PASS or the founder decides otherwise. (2) **Where it runs:** local and CI only, on ephemeral Postgres 17 + PostGIS containers. **No AWS resources, no deploys**, and no `infra/` changes unless separately approved. (3) **Data:** synthetic only. No real PII, payments, telephony or KYC. (4) **RDS fidelity:** migrations and grant tests run as a **non-superuser** owner role (like the RDS master user, without SUPERUSER), on Postgres/PostGIS versions RDS offers, pinned. (5) **Gate 2 decision cap:** at most PASS WITH CONDITIONS, with the condition that migrations and the grant-matrix tests are re-run against RDS in dev once it exists. (6) **Local Docker:** not installed on the founder's workstation. DB tests run in GitHub Actions unless the founder approves installing Docker locally |
 | **Removal condition** | Gate 1 is PASS **and** the Gate 2 migrations and grant-matrix tests have been re-run on RDS in dev and recorded |
 | **Risks** | Local Postgres differs from RDS (superuser, extensions, parameter groups, IAM auth), mitigated by restriction (4) and the RDS re-run condition. It also sets a precedent of starting a gate early, mitigated by the narrow scope, the start condition and the removal condition |
+
+### TE-03: interim ruleset while the organisation has a single member
+| | |
+|---|---|
+| **Why** | The founder is intentionally the only member of `homesvcplatform` for now. The final ruleset (`.github/rulesets/main-protection.json`) requires one approving review plus code-owner review, and GitHub never lets authors approve their own pull requests. With an empty bypass list, a sole member could never merge anything |
+| **What is active now** | Ruleset **`main-protection-interim`** ([id 24743658](https://github.com/homesvcplatform/platform/rules/24743658), definition in `.github/rulesets/main-protection-interim.json`), applied 2026-10-08 on the default branch, enforcement **active**, **empty bypass list**. It blocks deletion and force pushes, and requires linear history, signed commits and a pull request (0 approvals, stale approvals dismissed, conversations resolved, **squash merge only**). The 6 status checks `verify`, `secrets-scan`, `sast`, `sca`, `iac`, `image` must come from GitHub Actions (integration 15368), and the branch must be up to date |
+| **Deferred (intentionally not enabled)** | 1 required approval · code-owner review · approval of the most recent push by someone else · `two-reviewers-for-sensitive-paths` as a required check. Each needs a second person, and enabling them now would make `main` unmergeable. The two-reviewer workflow still runs on every PR, so a sensitive-path PR shows a red (non-blocking) check |
+| **Unchanged** | The final `main-protection.json` is the target model. Nothing in it was weakened or edited |
+| **Risk while open** | One person can change `main`, including sensitive paths, without a second reviewer. Mitigations: every change must go through a PR with all 6 CI checks green (including the gitleaks, Semgrep, OSV, Checkov and Trivy self-tests), no force pushes or branch deletion, signed history (GitHub signs squash merges), and two-factor authentication on the founder account (recommended, §6.1) |
+| **Removal condition** | At least **3 people with Write access**, including the founder, in the CODEOWNERS teams: for normal PRs an author plus one code-owner approver, and for sensitive paths an author plus two approvers. Then replace `main-protection-interim` with `main-protection.json`, prove G7 in full, then G8 and G9, and close TE-03 |
 
 ---
 
@@ -86,7 +97,7 @@ Gate 1's structural changes are recorded in [ADR-022](../phase-1/15-architecture
 | G4 | `sca` | OSV-Scanner reports no known vulnerabilities in `pnpm-lock.yaml` | **PASS** | OSV-Scanner v2.6.0: "Scanned /src/pnpm-lock.yaml file and found 205 packages", "No issues found" |
 | G5 | `iac` | `terraform fmt -check` and `validate` pass for `envs/shared-services`, `envs/dev`, `envs/test`, `org`. Checkov passes on `infra/` **and** the insecure-fixture self-test reports failed checks | **PASS** | Terraform 1.16.5: `fmt -check` passed, and "Success! The configuration is valid." for all 4 roots. Checkov 3.3.26: 496 passed, **0 failed**, 43 skipped (each an inline justified skip). Self-test: 3 resources, 14 failed checks, "flagged as expected" |
 | G6 | `image` | Docker build succeeds. Trivy finds no fixable HIGH/CRITICAL issues. CycloneDX SBOM artifact uploaded | **PASS** | Image built (runtime Debian 13.7, distroless). Trivy v0.75.0: 0 findings (OS and Node packages). SBOM artifact `hsp-backend_<sha>.cyclonedx.json` uploaded. **Not pushed or signed**, because AWS isn't configured; push and signing are proof A5 |
-| G7 | Ruleset enforcement | Direct push to `main` rejected. A PR can't merge with any required check red. An unsigned commit is rejected. Code-owner review is required and the `@homesvcplatform/*` teams resolve | **PENDING (GitHub setup)** | Not proven. The ruleset isn't applied yet; commits so far were pushed directly to `main`, before protection, as planned in §6.2. Needs the GitHub plan (I-3), the teams, commit signing and `apply-repo-protection.sh` |
+| G7 | Ruleset enforcement | Direct push to `main` rejected. A PR can't merge with any required check red. An unsigned commit is rejected. Code-owner review is required and the `@homesvcplatform/*` teams resolve | **PARTIAL (TE-03)** | **Configured, verified by API read-back** (2026-10-08): `main-protection-interim` is active on the default branch with an empty bypass list. It blocks deletion and force pushes, and requires linear history, signed commits, a PR (0 approvals, squash only, conversations resolved) and the 6 checks from GitHub Actions on an up-to-date branch. **Not yet demonstrated live:** the rejection of a direct or unsigned push to `main`, and a PR blocked while a required check is red. The live push test is the founder's step in §6.2, because my attempt to push to `main` was blocked by this workstation's safety controls. **Not provable with one member (deferred, TE-03):** required approval, code-owner review, and resolution of the `@homesvcplatform/*` teams |
 | G8 | Boundary check blocks a PR | A throwaway PR that adds a deep cross-module import → `verify` red (then close the PR) | **PENDING (GitHub test)** | Not proven in CI. Proven locally only (§2: planted violations make `pnpm run arch` exit 4). Needs a throwaway PR |
 | G9 | Two-approval rule | A throwaway PR touching `infra/` with one approval → `two-reviewers-for-sensitive-paths` red. With two approvals → green | **PENDING (GitHub setup + test)** | Not proven. **Control fixed 2026-10-08, before testing:** the check counted approvals from anyone. On this public repo any GitHub user can submit an "Approve" review, so two outsiders could have satisfied it. It now counts only each reviewer's latest APPROVED review from people with write/admin access, excluding the PR author, and fails closed if the permission is unknown. The workflow has run on the Dependabot PRs, but they touch no sensitive path. Needs two humans with write access and a throwaway PR touching `infra/` |
 
@@ -191,12 +202,12 @@ The root causes and fixes are in commits `4971643` and `f24d451`, summarised in 
 - [ ] Settings → Actions → General: "Read repository contents" default workflow permissions. Don't allow Actions to approve PRs.
 - [ ] Settings → Code security: enable Dependabot alerts (and secret scanning/push protection if the plan allows).
 
-### 6.2 Branch / ruleset protection (after the first push)
-- [ ] Push the current `main` to `homesvcplatform/platform`.
-- [ ] Run once (repo admin, `gh` CLI authenticated): `tools/github/apply-repo-protection.sh homesvcplatform/platform`
-  - creates ruleset `main-protection`: PR required, code-owner review, signed commits, linear history, no force-push/deletion, required checks `verify`, `secrets-scan`, `sast`, `sca`, `iac`, `image`, `two-reviewers-for-sensitive-paths`
-  - creates environments `dev`, `test` (deploys from protected branches only; they stay unused until TE-01 closes)
-- [ ] Add **required reviewers** to environments `dev` and `test`.
+### 6.2 Branch / ruleset protection
+- [x] Push the current `main` to `homesvcplatform/platform` (done; head `f585de2`, CI green).
+- [x] **Interim ruleset applied** (`main-protection-interim`, TE-03). From now on every change to `main` goes through a PR: push a branch, open a PR, wait for the 6 checks, then **squash merge**.
+- [ ] **Live G7 test (founder, from any clone, takes 1 minute):** make any throwaway commit on a local branch, then run `git push origin HEAD:main`. Expected: rejected with `GH013: Repository rule violations found`, listing that changes must go through a pull request and that commits must have verified signatures. Nothing reaches `main`. Discard the throwaway commit afterwards. Paste the rejection output so it can be recorded.
+- [ ] **Later (removes TE-03):** with at least 3 Write-access members in the CODEOWNERS teams, replace the interim ruleset with `.github/rulesets/main-protection.json` (Settings → Rules → Rulesets → New ruleset → Import a ruleset; then delete `main-protection-interim`), and enable environment reviewers.
+- [ ] Create environments `dev`, `test` (deployments from protected branches only) and add **required reviewers**. Required reviewers are available on Free because the repo is public. With one member, the founder is the only reviewer. That is still a deliberate approval gate on deploys and doesn't block solo operation.
 
 ### 6.3 AWS accounts (non-production only)
 - [x] AWS Organization, management account, OUs **Infrastructure** and **Workloads**, and `housefi-shared-services` in Infrastructure.
@@ -235,7 +246,7 @@ The root causes and fixes are in commits `4971643` and `f24d451`, summarised in 
 3. ~~Decide **I-6**.~~ **Done** (2026-10-08).
 4. ~~Move the repository to `homesvcplatform/platform` (I-7).~~ **Done** (2026-10-08).
 5. ~~Commit the registry amendments and the TE-01/TE-02 docs.~~ **Done** (`6ea5830`).
-6. Complete **§6.1–6.2**: GitHub plan, teams, signing, push, `apply-repo-protection.sh`, environment reviewers.
+6. **§6.1–6.2:** interim ruleset **applied** (TE-03, G7 partial). Remaining: the live push-rejection test, environments, and (later, with more members) the teams, signing for contributors and the final ruleset.
 7. ~~Confirm the first CI run is green~~ **Done:** G1–G6 PASS in [run 37822630219](https://github.com/homesvcplatform/platform/actions/runs/37822630219) (§3). **Remaining:** G7, G8, G9, which need §6.1–6.2 plus throwaway PRs. When G7–G9 are recorded, TE-02's start condition is met, and Gate 2 then needs the founder's explicit "start Gate 2".
 8. Complete the **"Now"** part of §6.4 and the shared-services repository variables in §6.5. Push to `main`. Record **A1a, A3, A5, A6, A8a**.
 9. **TE-01:** when dev/test accounts exist, complete the "Later" part of §6.4 and the environment variables in §6.5. Run the Deploy workflow to `dev` and `test`. Record **A1b, A2, A4, A7, A8b**, then close TE-01.
