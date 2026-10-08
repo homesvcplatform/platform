@@ -79,8 +79,8 @@ resource "aws_s3_bucket" "this" {
 }
 
 resource "aws_s3_bucket_public_access_block" "this" {
-  for_each                = aws_s3_bucket.this
-  bucket                  = each.value.id
+  for_each                = local.buckets
+  bucket                  = aws_s3_bucket.this[each.key].id
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true
@@ -88,20 +88,20 @@ resource "aws_s3_bucket_public_access_block" "this" {
 }
 
 resource "aws_s3_bucket_ownership_controls" "this" {
-  for_each = aws_s3_bucket.this
-  bucket   = each.value.id
+  for_each = local.buckets
+  bucket   = aws_s3_bucket.this[each.key].id
   rule { object_ownership = "BucketOwnerEnforced" }
 }
 
 resource "aws_s3_bucket_versioning" "this" {
-  for_each = aws_s3_bucket.this
-  bucket   = each.value.id
+  for_each = local.buckets
+  bucket   = aws_s3_bucket.this[each.key].id
   versioning_configuration { status = "Enabled" }
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
-  for_each = aws_s3_bucket.this
-  bucket   = each.value.id
+  for_each = local.buckets
+  bucket   = aws_s3_bucket.this[each.key].id
   rule {
     bucket_key_enabled = true
     apply_server_side_encryption_by_default {
@@ -112,15 +112,15 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
 }
 
 resource "aws_s3_bucket_logging" "this" {
-  for_each      = aws_s3_bucket.this
-  bucket        = each.value.id
+  for_each      = local.buckets
+  bucket        = aws_s3_bucket.this[each.key].id
   target_bucket = aws_s3_bucket.access_logs.id
   target_prefix = "${each.key}/"
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "this" {
-  for_each = aws_s3_bucket.this
-  bucket   = each.value.id
+  for_each = local.buckets
+  bucket   = aws_s3_bucket.this[each.key].id
   rule {
     id     = "hygiene"
     status = "Enabled"
@@ -181,12 +181,12 @@ resource "aws_s3_bucket_policy" "access_logs" {
 }
 
 data "aws_iam_policy_document" "tls_only" {
-  for_each = aws_s3_bucket.this
+  for_each = local.buckets
   statement {
     sid       = "DenyInsecureTransport"
     effect    = "Deny"
     actions   = ["s3:*"]
-    resources = [each.value.arn, "${each.value.arn}/*"]
+    resources = [aws_s3_bucket.this[each.key].arn, "${aws_s3_bucket.this[each.key].arn}/*"]
     principals {
       type        = "*"
       identifiers = ["*"]

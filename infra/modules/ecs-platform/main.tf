@@ -90,6 +90,7 @@ resource "aws_iam_role" "task" {
 }
 
 resource "aws_security_group" "app" {
+  #checkov:skip=CKV2_AWS_5:Attached to the ECS services created at Gate 3 (no services exist in Gate 1). Remove this skip at Gate 3.
   name        = "${var.name_prefix}-app-tasks"
   description = "Application tasks: no inbound by default; egress HTTPS for AWS endpoints and the egress proxy"
   vpc_id      = var.vpc_id

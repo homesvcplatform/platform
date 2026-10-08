@@ -16,7 +16,12 @@ variable "account_id" {
 
 variable "github_repository" {
   type        = string
-  description = "owner/repo used in OIDC trust conditions."
+  default     = "homesvcplatform/platform"
+  description = "owner/repo used in OIDC trust conditions (ADR-021 neutral name, I-7). Exact name only: no wildcards."
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
+    error_message = "github_repository must be an exact owner/repo with no wildcards."
+  }
 }
 
 variable "create_oidc_provider" {
@@ -122,6 +127,7 @@ module "ci_oidc" {
   environment          = local.environment
   github_repository    = var.github_repository
   create_oidc_provider = var.create_oidc_provider
+  ecr_repository_arn   = var.shared_ecr_repository_arn
   ecr_kms_key_arn      = var.shared_ecr_kms_key_arn
   cluster_arn          = module.ecs_platform.cluster_arn
   execution_role_arn   = module.ecs_platform.execution_role_arn

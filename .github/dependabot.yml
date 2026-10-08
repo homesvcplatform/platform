@@ -1,9 +1,13 @@
 # Dependency and pin updates (SCA complement to OSV-Scanner). Grouped weekly to keep review load sane.
+# cooldown: new releases are only proposed after 7 days, so a freshly published malicious or broken version
+# has time to be detected and yanked (supply-chain hardening; matches pnpm minimumReleaseAge).
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
     schedule: { interval: weekly, day: monday, time: "05:00", timezone: Asia/Kolkata }
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 10
     versioning-strategy: increase
     groups:
@@ -11,9 +15,15 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly, day: monday, time: "05:00", timezone: Asia/Kolkata }
+    cooldown:
+      default-days: 7
   - package-ecosystem: docker
     directory: /
     schedule: { interval: weekly, day: monday, time: "05:00", timezone: Asia/Kolkata }
+    cooldown:
+      default-days: 7
   - package-ecosystem: terraform
     directories: ["/infra/envs/dev", "/infra/envs/test", "/infra/org"]
     schedule: { interval: weekly, day: monday, time: "05:00", timezone: Asia/Kolkata }
+    cooldown:
+      default-days: 7

@@ -14,7 +14,10 @@ RUN pnpm install --frozen-lockfile --prod --ignore-scripts \
  && find /app -type d -name __tests__ -prune -exec rm -rf {} + \
  && find /app -type f -name "*.test.ts" -delete
 
-FROM gcr.io/distroless/nodejs24-debian12:nonroot@sha256:14d42e2511532589a7c7e01a753667a74fcc96266e137e8125006b87b0c32d0a
+# Debian 13 runtime: the nodejs24-debian12 distroless image still ships libssl3 3.0.18 (CVE-2026-31789 critical,
+# CVE-2026-28387..28390, CVE-2026-45447). This digest carries libssl3t64 3.5.7-1~deb13u3, which Debian lists as fixed.
+# The build stage only installs pure-JS production dependencies (no native addons), so its Debian release doesn't matter.
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:9eeb7f5887d0e239e78264b06f7f11d2e14be534050481803a9e4728fcdd278e
 WORKDIR /app
 # Files stay root-owned and the task runs with a read-only root filesystem; the nonroot user cannot modify code.
 COPY --from=build /app /app

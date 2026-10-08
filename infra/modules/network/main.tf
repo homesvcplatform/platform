@@ -15,8 +15,13 @@ variable "single_nat_gateway" {
   description = "dev/test use one NAT gateway to control cost; staging/prod-like use one per AZ."
 }
 
+# Allowlist the three Mumbai AZs explicitly, so a newly added zone can't silently change subnet placement.
 data "aws_availability_zones" "available" {
   state = "available"
+  filter {
+    name   = "zone-name"
+    values = ["ap-south-1a", "ap-south-1b", "ap-south-1c"]
+  }
 }
 
 data "aws_region" "current" {}

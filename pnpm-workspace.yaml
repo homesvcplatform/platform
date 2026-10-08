@@ -5,3 +5,10 @@ packages:
   - "packages/adapters/*"
 # pnpm 10 blocks dependency lifecycle scripts by default; keep the allowlist explicit and empty.
 onlyBuiltDependencies: []
+# Supply-chain hardening:
+# - minimumReleaseAge: don't resolve versions published less than 7 days ago (minutes).
+# - trustPolicy: refuse a version whose publishing trust evidence is weaker than earlier versions'.
+# - blockExoticSubdeps: transitive dependencies may only come from the registry (no git/tarball URLs).
+minimumReleaseAge: 10080
+trustPolicy: no-downgrade
+blockExoticSubdeps: true

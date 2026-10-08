@@ -17,6 +17,10 @@ variable "create_oidc_provider" {
   type    = bool
   default = true
 }
+variable "ecr_repository_arn" {
+  type        = string
+  description = "Shared backend repository (shared-services account). The deploy role reads images and signatures from it only."
+}
 variable "ecr_kms_key_arn" {
   type        = string
   description = "Shared registry KMS key (shared-services account). The deploy role decrypts image layers for verification."
@@ -68,8 +72,13 @@ resource "aws_iam_role" "deploy" {
 data "aws_iam_policy_document" "deploy" {
   statement {
     sid       = "RegisterTaskDefinitions"
-    actions   = ["ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition", "ecs:TagResource"]
-    resources = ["*"] # RegisterTaskDefinition does not support resource-level permissions.
+    actions   = ["ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition"]
+    resources = ["*"] # These two actions do not support resource-level permissions.
+  }
+  statement {
+    sid       = "TagOnlyThisEnvironmentsTaskDefinitions"
+    actions   = ["ecs:TagResource"]
+    resources = ["arn:aws:ecs:ap-south-1:${data.aws_caller_identity.current.account_id}:task-definition/${var.name_prefix}-*:*"]
   }
   statement {
     sid       = "UpdateServicesInThisClusterOnly"
@@ -87,9 +96,14 @@ data "aws_iam_policy_document" "deploy" {
     }
   }
   statement {
-    sid       = "ReadImagesForVerification"
-    actions   = ["ecr:GetAuthorizationToken", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:DescribeImages"]
-    resources = ["*"]
+    sid       = "RegistryAuthToken"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"] # GetAuthorizationToken does not support resource-level permissions.
+  }
+  statement {
+    sid       = "ReadSharedRepositoryForVerification"
+    actions   = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:DescribeImages"]
+    resources = [var.ecr_repository_arn]
   }
   statement {
     sid       = "DecryptImageLayers"

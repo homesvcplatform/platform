@@ -76,6 +76,9 @@ resource "aws_kms_alias" "data_class" {
 
 # Asymmetric signing key for access tokens (Phase 1 05 §3.1). Asymmetric keys cannot auto-rotate;
 # rotation is by issuing a new key and kid overlap (runbook), every 90 days.
+# AWS KMS does not support automatic rotation for asymmetric (SIGN_VERIFY) keys; enable_key_rotation = true is
+# rejected by the API. Rotation is manual: new key + kid overlap every 90 days (runbook). Same reason as CKV_AWS_7.
+# nosemgrep: terraform.aws.security.aws-kms-no-rotation.aws-kms-no-rotation
 resource "aws_kms_key" "jwt_signing" {
   #checkov:skip=CKV_AWS_7:Asymmetric SIGN_VERIFY keys do not support automatic rotation; rotated via new key + kid overlap.
   description              = "${var.name_prefix} access-token signing key (ES256)"
