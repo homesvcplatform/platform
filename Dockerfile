@@ -3,7 +3,7 @@
 # The ECS task definition selects the role via the command. Base images are pinned by digest (Dependabot updates them).
 # Runtime: distroless, non-root, no shell, no package manager. Node 24 runs the TypeScript sources via type stripping (ADR-022).
 
-FROM node:24.15.0-bookworm-slim@sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d AS build
+FROM node:26.9.0-bookworm-slim@sha256:582460f614631b59b824ac6020533b9bf339c7fdf3a6d7db31abb6b4065f0212 AS build
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 CI=true
 WORKDIR /app
 RUN corepack enable pnpm
