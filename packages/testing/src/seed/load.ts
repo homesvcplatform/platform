@@ -176,7 +176,7 @@ export async function loadSyntheticSeed(db: Queryable): Promise<SeedSummary> {
       [userId, encryptFixture(phone), blindIndexFixture(phone), maskPhone(phone), locale],
     );
     await run(
-      `INSERT INTO identity.subject_keys (user_id, wrapped_dek, kms_key_arn) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      `INSERT INTO identity.subject_keys (user_id, data_class, wrapped_dek, kms_key_arn) VALUES ($1, 'pii-contact', $2, $3) ON CONFLICT DO NOTHING`,
       [userId, randomBytes(48), FIXTURE_KEY_REF],
     );
   };

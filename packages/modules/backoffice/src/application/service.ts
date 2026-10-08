@@ -298,7 +298,7 @@ export class BackofficeService {
       await c.query(SQL.insertApproval, [id, input.adminUserId, JSON.stringify(payload), sha256(canonicalJson(payload)), actor.id, now,
         new Date(now.getTime() + APPROVAL_TTL_MS)]);
       await this.#audit(c, { actorType: 'ADMIN', actorId: actor.id ?? null, actorSessionId: actor.sessionId ?? null, action: 'approval.requested',
-        resourceType: 'backoffice.approval_request', resourceId: id, outcome: 'SUCCESS', changeSummary: { actionType: 'security.grant', roleCode: input.roleCode } }, meta);
+        resourceType: 'backoffice.approval_request', resourceId: id, outcome: 'SUCCESS', changeSummary: { actionType: 'security.grant', role: input.roleCode } }, meta);
       return { approvalRequestId: id };
     });
   }
@@ -322,7 +322,7 @@ export class BackofficeService {
       }
       await this.#audit(c, { actorType: 'ADMIN', actorId: actor.id ?? null, actorSessionId: actor.sessionId ?? null, action: 'approval.decided',
         resourceType: 'backoffice.approval_request', resourceId: approvalRequestId, outcome: 'SUCCESS',
-        changeSummary: { decision, roleCode: payload.roleCode } }, meta);
+        changeSummary: { decision, role: payload.roleCode } }, meta);
     });
     if (decision === 'APPROVE') this.#d.logger.log('warn', 'security.admin_grant_changed', { outcome: 'EXECUTED' });
   }

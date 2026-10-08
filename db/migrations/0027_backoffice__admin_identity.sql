@@ -21,7 +21,7 @@ CREATE TABLE backoffice.roles (
 
 CREATE TABLE backoffice.role_permissions (
   role_code  text NOT NULL REFERENCES backoffice.roles(code),
-  permission text NOT NULL CHECK (permission ~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_*]*){1,3}$'),
+  permission text NOT NULL CHECK (permission ~ '^[a-z][a-z0-9_]*(\.([a-z][a-z0-9_]*|\*)){1,3}$'),
   PRIMARY KEY (role_code, permission)
 );
 
