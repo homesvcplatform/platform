@@ -12,7 +12,7 @@ ALTER TABLE identity.subject_keys ALTER COLUMN data_class DROP DEFAULT;
 ALTER TABLE identity.subject_keys ADD CONSTRAINT subject_keys_data_class_ck
   CHECK (data_class IN ('pii-contact','pii-address','kyc','recordings','restricted-attributes'));
 ALTER TABLE identity.subject_keys DROP CONSTRAINT subject_keys_pkey;
--- squawk-ignore constraint-missing-not-valid
+-- squawk-ignore adding-serial-primary-key-field, constraint-missing-not-valid
 ALTER TABLE identity.subject_keys ADD CONSTRAINT subject_keys_pkey PRIMARY KEY (user_id, data_class);
 
 -- SR-02 / G-6: browser sessions (customer PWA, field-agent web) authenticate with an opaque cookie secret; only its
