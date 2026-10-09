@@ -22,13 +22,14 @@ Also: manual ops assignment (`dispatch.assign`, city-scoped, reason, INV-01, INV
 **Not in Gate 5** (their gates): diagnosis, quotes, repair orders created from approvals, repair completion and the completion-code / ops completion override commands, TCP-2 material usage (Gate 6); offers and the TCP-1 facade called by matching (Gate 7); UI (Gates 8 / 9); IVR and masked-call wait evidence (Gate 10); real bills, payments, ledger (Gate 11). Reschedule, ops cancellation and safety abort are not part of the Gate 5 deliverables and are not built.
 
 ## 2. Exit criteria evidence
-**GitHub CI [run 37956490456](https://github.com/homesvcplatform/platform/actions/runs/37956490456)** (commit `649883c`): every job succeeded (`supply-chain-selftest` skipped by design, TE-01). From the `verify` log: guards, lint, typecheck, 0 boundary violations (208 modules), **317/317 unit tests** (incl. 19 property tests), squawk "0 issues in 33 files", **test:db 18 files / 248/248 tests** (new in Gate 5: `jobs.db.test.ts` 21, `jobs-guards.db.test.ts` 14, `timers.db.test.ts` 4, worker `timers.db.test.ts` 1).
+**GitHub CI [run 37958395465](https://github.com/homesvcplatform/platform/actions/runs/37958395465)** on the final code head `5e9e1b7` of PR #10: every job succeeded (`supply-chain-selftest` skipped by design, TE-01). From the `verify` log: `pnpm install --frozen-lockfile` (lockfile up to date), guards, lint, typecheck, 0 boundary violations (208 modules), **320/320 unit tests** (incl. 19 property tests and 3 supply-chain regression tests), squawk "0 issues in 34 files", **test:db 18 files / 250/250 tests** (new in Gate 5: `jobs.db.test.ts` 23, `jobs-guards.db.test.ts` 14, `timers.db.test.ts` 4, worker `timers.db.test.ts` 1). Later commits on the branch change this report only.
 
 | Exit criterion | Evidence |
 |---|---|
 | Property tests over transition tables (no illegal transition reachable) | fast-check over the code tables (random walks stay in the table and end only in terminal states; any pair outside the table is refused; reachability; specific 06 "forbidden" moves) and over the database (random from / to pairs on a live visit: accepted exactly when the table allows, otherwise HS030); the DB table equals the code |
 | INV-01 | Partial unique index (Gate 2) + a second manual assignment refused once the visit is assigned |
 | INV-03 | Per-technician advisory lock + overlapping-window count against the technician's capacity: an overlapping visit is refused (`AT_CAPACITY`), a non-overlapping one accepted |
+| Manual-assignment authorization (05 §11 row "Manual assignment": DISP S, CM S) | Per matrix column, an actor built from the seeded role permissions may assign in its own city exactly when the cell allows, and never in another city; a city manager built from the seeded role completes an assignment end to end (`jobs.db.test.ts`) |
 | INV-04 | Deferred trigger: a repair order IN_PROGRESS without a linked visit on site fails at commit (HS035); the linked case commits |
 | INV-14 | Trigger: ON_SITE without a START_CODE / OPS_OVERRIDE_ARRIVAL proof fails (HS032); the app path writes the proof; the approved ops override writes an audited proof referencing its change request |
 | INV-15 | Trigger: a repair visit COMPLETED without a COMPLETION_CODE / OPS_OVERRIDE_COMPLETION proof fails (HS033); a diagnosis visit needs none |
@@ -40,7 +41,11 @@ Also: manual ops assignment (`dispatch.assign`, city-scoped, reason, INV-01, INV
 | Time-travel disclosure tests incl. unverified customer | L1 before window start − 3 h, L2 (address decrypted, disclosure event) inside, L2 for 60 min after a terminal visit, then L3 without the address, none after 30 days; an ops-assisted unverified customer stays L1 inside the window until ops confirms by call; a released technician drops to L3; another technician gets 404 |
 | Adult-present field required | Booking without `onsiteAdult`, or with an unknown value, is refused (400); the column is NOT NULL with a CHECK (Gate 2) |
 
-### 2a. Issues found and fixed by CI before green
+### 2a. Pre-merge fixes (head `5e9e1b7`)
+- **City manager manual assignment (ADR-026 #13, migration 0034):** the §11 matrix grants "Manual assignment" to DISP S and CM S, but the Gate 2 seed gave `dispatch.assign` to DISPATCH only. Following the accepted ADR-024 #10 rule (role definitions = 05 §5.3 + what the §11 matrix grants explicitly) and 04 (`dispatch.assign` is the manual-assignment permission), CITY_MANAGER now holds `dispatch.assign`, city-scoped. No new permission or role; it also covers the ops-confirmed wait (ADR-026 #8). 05 §5.3 updated; tested as above.
+- **Graphile Worker types pin narrowed (ADR-026 #3):** the override is now `graphile-config@0.0.1-beta.18>@types/node: 24.13.6`, scoped to that exact graphile-config version so an upgrade is resolved and trust-checked afresh. Resolved: `@types/node` 24.13.6 only, `undici-types` 7.18.2, never 6.21.0. `tools/architecture/__tests__/supply-chain.test.ts` checks the pnpm / npm policies, the two documented overrides (workspace and lockfile) and these resolutions.
+
+### 2b. Issues found and fixed by CI before green
 - Graphile Worker enables row-level security on its private tables, so the worker role could not take jobs: explicit worker-only policies are created by `installTimerQueue`.
 - The exact grant / append-only lists gained the 0033 tables; the Gate 2 test builders set the actor context.
 - Idempotency actor keys must use the platform's `user:` / `admin:` prefixes (a `customer:` key violated the CHECK).
@@ -55,7 +60,7 @@ Also: manual ops assignment (`dispatch.assign`, city-scoped, reason, INV-01, INV
 - **Disclosure:** the exact address is decrypted only in the L2 path (customers module, SR-06; the ESLint field-crypto allowlist gains `customers`), after the disclosure event is written; never logged.
 - **Ops overrides** use the Gate 4 change-request path with the bound passkey step-up, so they are disabled outside local / CI until the independent WebAuthn review (Gate 3 condition).
 - **Queue isolation:** only `app_worker` can touch `graphile_worker`; other roles schedule through two SECURITY DEFINER functions with validated task names and keys.
-- **Supply chain:** two new dependencies (founder-approved). graphile-config's `@types/node` range can only resolve to `undici-types` 6.21.0, which the `no-downgrade` trust policy refuses; a types-only override scoped to `graphile-config@0.0.1-beta.18` uses the repository's own trusted Node 24 types instead (ADR-026 #3). No policy changed, no check bypassed; a regression test pins the settings, the two overrides and the resolved versions.
+- **Supply chain:** two new dependencies (founder-approved). Every `@types/node` in graphile-config's range (^22.16.3) needs `undici-types` ~6.21.0, and 6.21.0 is refused by the `no-downgrade` trust policy; no in-range version passes. A types-only override scoped to `graphile-config@0.0.1-beta.18` uses the repository's own trusted Node 24 types (24.13.6) instead, so the refused version is never installed (ADR-026 #3). `trustPolicy`, `minimumReleaseAge`, `blockExoticSubdeps` and `ignore-scripts` are unchanged; no provenance or trust check is bypassed; `supply-chain.test.ts` guards the settings, the overrides and the resolved versions.
 
 ## 4. Tech debt register delta
 | Item | Due |
@@ -79,4 +84,4 @@ Unchanged from Gate 4 §5, plus the worker process running on the deployed queue
 4. **Gate 1 and Gate 2 conditions** remain tracked.
 
 ## 7. Decision
-Proposed **PASS WITH CONDITIONS**. Approver: founder (on merge of PR #10). Gate 6 not started.
+Proposed **PASS WITH CONDITIONS**. Every PR #10 check is green on GitHub for the final code head `5e9e1b7` (§2). Approver: founder (on merge of PR #10). Gate 6 not started.
