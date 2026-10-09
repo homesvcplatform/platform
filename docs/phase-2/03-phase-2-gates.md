@@ -29,7 +29,7 @@
 | **Deliverables** | Phone OTP (fake SMS adapter), sessions, refresh rotation with reuse detection, BFF cookie sessions (customer + **agent web**), signed client-IP header over mTLS (G-6/SR-10), step-up, IVR PIN credential store, admin SSO via a **test IdP** + passkey enforcement, policy engine + registry, audit log (hash-chained), field crypto with per-class keys + encryption context (SR-06), allowlist logger + canary-PII test, rate limiter |
 | **Exit criteria** | Authorization-matrix generator running for all implemented endpoints (default deny). ST-08…ST-12, ST-27, ST-28 green. Refresh reuse revokes the family. No tokens in browser storage (SR-02). KMS decrypt denied for roles without the class grant. Canary-PII scan: 0 hits |
 | **Errata applied** | G-6, SR-02, SR-03 (passkey step-up primitive), SR-06, SR-10, SR-14 (new-device hold rule), X-14, X-32 |
-| **Depends on** | Gate 2 |
+| **Depends on** | Gate 2. **Started 2026-10-09 under TE-02** (founder decision, restriction 7 amended): local and GitHub CI only, synthetic fixtures, fake SMS, test IdP, `kms-local`; no AWS, production, real PII, payments, telephony or KYC ([GATE-1-CLOSURE-CHECKLIST §0](GATE-1-CLOSURE-CHECKLIST.md#te-02-gate-2-may-start-before-gate-1-is-pass-narrow-solo-development-exception)) |
 
 ## Gate 4: Catalog, localization, geo
 | **Objective** | All category/service-type/locale/geo content is data, with no hard-coding |

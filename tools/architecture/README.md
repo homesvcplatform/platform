@@ -15,7 +15,7 @@ Single source of truth: `modules.json` (modules, schemas, allowed compile-time d
 | B8 | No secrets in source or frontends | gitleaks (CI, blocking + self-test), `.gitignore`, PR checklist. Bundle secret scan at Gate 8 | **Active (Gate 1)** |
 | B9 | Modules never import adapters; adapters never import apps/other adapters | dependency-cruiser `B9-*` | **Active (Gate 1)** |
 | B10 | Only the worker role writes the ledger | DB grants (migration 0016) + grant-matrix DB test (`packages/testing/src/__tests__/db/grants.db.test.ts`, CI) | **Active (Gate 2)** |
-| B11 | Every HTTP handler declares a policy | Policy registry boot check | Gate 3 |
-| B12 | Every mutating endpoint declares idempotency | Contract metadata check | Gate 3 |
+| B11 | Every HTTP handler declares a policy | `assertEndpointRegistry` (`@hsp/policy`) runs in each app composition (`apps/*/src/bootstrap.ts`), so a handler without a registered policy refuses to start; unknown actions are denied by default. Unit + DB tests | **Active (Gate 3)** |
+| B12 | Every mutating endpoint declares idempotency | Same check: each `EndpointSpec` declares `required`, `implicit` or `none` with a stated reason | **Active (Gate 3)**. `required` endpoints are enforced with `beginIdempotent` / `completeIdempotent` (`@hsp/db`, `platform.idempotency_keys`); first user: `POST /admin/v1/grants` |
 
 `__tests__/boundaries.test.ts` plants one violation per active rule in a throwaway tree and asserts each is reported.

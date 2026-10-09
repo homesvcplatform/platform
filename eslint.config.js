@@ -4,6 +4,18 @@ import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
+const boundaryPatterns = [
+  { group: ['@hsp/*/src/*', '@hsp/*/src/**'], message: 'Import packages via their public entry only (B1).' },
+  { group: ['**/src/application/**', '**/src/domain/**', '**/src/infrastructure/**'],
+    message: 'Module internals are private (B1). Use the module public entry.' },
+];
+
+// SR-06: field decryption happens only in the disclosure / reveal paths. The raw field-crypto factory may be imported
+// only by the modules listed in the override below (identity: phone reveal for OTP delivery).
+const fieldCryptoRestriction = [
+  { name: '@hsp/security', importNames: ['createFieldCrypto'], message: 'Field decryption is restricted to disclosure / reveal services (SR-06).' },
+];
+
 export default tseslint.config(
   { ignores: ['**/node_modules/**', '**/.turbo/**', '**/coverage/**', 'docs/**', 'infra/**', '.dependency-cruiser.cjs'] },
   js.configs.recommended,
@@ -12,13 +24,7 @@ export default tseslint.config(
     files: ['**/*.{ts,js,mjs}'],
     languageOptions: { globals: { ...globals.node }, ecmaVersion: 2023, sourceType: 'module' },
     rules: {
-      'no-restricted-imports': ['error', {
-        patterns: [
-          { group: ['@hsp/*/src/*', '@hsp/*/src/**'], message: 'Import packages via their public entry only (B1).' },
-          { group: ['**/src/application/**', '**/src/domain/**', '**/src/infrastructure/**'],
-            message: 'Module internals are private (B1). Use the module public entry.' },
-        ],
-      }],
+      'no-restricted-imports': ['error', { patterns: boundaryPatterns, paths: fieldCryptoRestriction }],
       'no-eval': 'error',
       'no-implied-eval': 'error',
       'no-new-func': 'error',
@@ -29,6 +35,10 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/consistent-type-imports': 'error',
     },
+  },
+  {
+    files: ['packages/modules/identity/src/**/*.ts', '**/__tests__/**', '**/*.test.ts'],
+    rules: { 'no-restricted-imports': ['error', { patterns: boundaryPatterns }] },
   },
   {
     files: ['**/__tests__/**', '**/*.test.ts'],

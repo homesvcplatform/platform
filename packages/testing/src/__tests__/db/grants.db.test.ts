@@ -73,7 +73,6 @@ describe('grant matrix', () => {
 
   it('voice role matches the IVR command surface exactly (03 §12.1, X-11)', () => {
     expect(Object.fromEntries([...(matrix.get('app_voice') ?? [])].map(([t, p]) => [t, [...p].sort()]))).toEqual({
-      'compliance.audit_logs': ['INSERT'],
       'compliance.disclosure_events': ['INSERT'],
       'identity.ivr_credentials': ['SELECT', 'UPDATE'],
       'identity.users': ['SELECT'],
@@ -116,6 +115,33 @@ describe('grant matrix', () => {
         expect(privsOf(role, t).filter((p) => p === 'UPDATE' || p === 'DELETE'), `${role} ${t}`).toEqual([]);
       }
     }
+  });
+
+  it('Gate 3: no runtime role inserts audit rows directly; all go through the hash-chain writer', async () => {
+    for (const role of ROLES) expect(privsOf(role, 'compliance.audit_logs').filter((p) => p !== 'SELECT'), role).toEqual([]);
+    for (const role of ['app_api', 'app_admin', 'app_voice', 'app_worker']) {
+      const r = await db.admin.query(
+        "SELECT has_function_privilege($1, 'platform.append_audit_log(uuid,text,uuid,uuid,text,text,uuid,uuid,text,text,jsonb,uuid,bytea,bytea)', 'EXECUTE') AS ok",
+        [role]);
+      expect(r.rows[0].ok, role).toBe(true);
+    }
+    for (const role of ['app_webhook', 'retention_executor', 'ops_readonly', 'analytics_etl']) {
+      const r = await db.admin.query(
+        "SELECT has_function_privilege($1, 'platform.append_audit_log(uuid,text,uuid,uuid,text,text,uuid,uuid,text,text,jsonb,uuid,bytea,bytea)', 'EXECUTE') AS ok",
+        [role]);
+      expect(r.rows[0].ok, role).toBe(false);
+    }
+  });
+
+  it('Gate 3: the admin realm tables are reachable only by admin-api (and read by the worker)', () => {
+    const adminTables = ['backoffice.admin_grants', 'backoffice.admin_sessions', 'backoffice.admin_users', 'backoffice.admin_webauthn_credentials',
+      'backoffice.role_permissions', 'backoffice.roles', 'backoffice.webauthn_challenges'];
+    for (const t of adminTables) {
+      for (const role of ['app_api', 'app_voice', 'app_webhook']) expect(privsOf(role, t), `${role} ${t}`).toEqual([]);
+      expect(privsOf('app_admin', t).includes('DELETE'), t).toBe(false);
+    }
+    expect(privsOf('app_admin', 'backoffice.roles')).toEqual(['SELECT']);
+    expect(privsOf('app_admin', 'backoffice.role_permissions')).toEqual(['SELECT']);
   });
 
   it('restricted roles have no privileges until their views exist', () => {

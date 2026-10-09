@@ -31,6 +31,11 @@ export interface TestDatabase {
   readonly migrator: pg.Client;
   readonly migratorUrl: string;
   readonly migrations: Migration[];
+  /**
+   * A connection URL for a fresh LOGIN user that is a member of exactly one runtime group role, like a deployed process
+   * (ADR-019). Dropped when the database is closed.
+   */
+  loginFor(groupRole: 'app_api' | 'app_admin' | 'app_webhook' | 'app_voice' | 'app_worker'): Promise<string>;
   close(): Promise<void>;
 }
 
@@ -68,18 +73,31 @@ export async function createTestDatabase(opts: { migrate?: boolean } = {}): Prom
   const migrations = repoMigrations();
   if (opts.migrate !== false) await runMigrations(migrator, migrations);
 
+  const logins: string[] = [];
   return {
     name,
     admin,
     migrator,
     migratorUrl: migratorUrl.toString(),
     migrations,
+    async loginFor(groupRole) {
+      const login = `${name}_${groupRole}_${randomBytes(3).toString('hex')}`;
+      const password = randomBytes(18).toString('base64url');
+      await admin.query(`CREATE ROLE ${login} LOGIN PASSWORD '${password}' IN ROLE ${groupRole}`);
+      await admin.query(`GRANT CONNECT ON DATABASE ${name} TO ${login}`);
+      logins.push(login);
+      const url = new URL(dbUrl.toString());
+      url.username = login;
+      url.password = password;
+      return url.toString();
+    },
     async close() {
       await migrator.end();
       await admin.end();
       const drop = new pg.Client({ connectionString: base.toString() });
       await drop.connect();
       await drop.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+      for (const login of logins) await drop.query(`DROP ROLE IF EXISTS ${login}`);
       await drop.end();
     },
   };
