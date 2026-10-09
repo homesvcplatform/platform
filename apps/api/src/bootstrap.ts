@@ -1,10 +1,14 @@
-// Composition of the `api` process role (Gate 3): wiring only (B6). Builds the policy registry (default deny), checks
-// that every declared endpoint has a registered policy and an idempotency declaration (B11 / B12), and wires the
-// identity module to its ports. The HTTP framework adapter (ADR-024 #1: decorator-free) is attached in a later gate; until then
+// Composition of the `api` process role (Gate 3, Gate 4): wiring only (B6). Builds the policy registry (default deny),
+// checks that every declared endpoint has a registered policy and an idempotency declaration (B11 / B12), and wires the
+// identity module to its ports and the public geo / catalog reads (catalog's city lookup is geo, ADR-025 #8). The HTTP framework adapter (ADR-024 #1: decorator-free) is attached in a later gate; until then
 // `http` is the framework-neutral handler used by the tests.
 import type { KeyObject } from 'node:crypto';
 import type pg from 'pg';
 import type { AppEnvironment, Clock } from '@hsp/kernel';
+import { catalogEndpoints, createCatalogHttp } from '@hsp/module-catalog/http';
+import { CatalogService, registerCatalogPolicies } from '@hsp/module-catalog';
+import { createGeoHttp, geoEndpoints } from '@hsp/module-geo/http';
+import { GeoService, registerGeoPolicies } from '@hsp/module-geo';
 import { createIdentityHttp, identityEndpoints } from '@hsp/module-identity/http';
 import {
   IdentityService, registerIdentityPolicies, type BotVerifier, type IdentityKeys, type OtpSender, type PhonePolicy, type SurfaceEligibility,
@@ -16,6 +20,10 @@ import { assertRateLimitStore, createDekCache, createRateLimiter, type JwtSigner
 export interface ApiComposition {
   readonly identity: IdentityService;
   readonly http: ReturnType<typeof createIdentityHttp>;
+  readonly geo: GeoService;
+  readonly geoHttp: ReturnType<typeof createGeoHttp>;
+  readonly catalog: CatalogService;
+  readonly catalogHttp: ReturnType<typeof createCatalogHttp>;
   readonly policies: PolicyRegistry;
 }
 
@@ -45,12 +53,17 @@ export function composeApi(o: ApiCompositionOptions): ApiComposition {
     if (!d.allow) o.logger.log('info', 'authz.denied', { policyAction: d.action, actorKind: d.actorKind, reason: d.reason ?? 'UNKNOWN' });
   });
   registerIdentityPolicies(policies);
-  assertEndpointRegistry(identityEndpoints, policies);
+  registerGeoPolicies(policies);
+  registerCatalogPolicies(policies);
+  assertEndpointRegistry([...identityEndpoints, ...geoEndpoints, ...catalogEndpoints], policies);
+  const rateLimiter = createRateLimiter(rateLimitStore);
   const identity = new IdentityService({
     pool: o.pool, clock: o.clock, kms: o.kms, dekCache: createDekCache(), keys: o.keys, tokenSigner: o.tokenSigner,
-    tokenVerificationKeys: o.tokenVerificationKeys, issuer: o.issuer, rateLimiter: createRateLimiter(rateLimitStore),
+    tokenVerificationKeys: o.tokenVerificationKeys, issuer: o.issuer, rateLimiter,
     logger: o.logger, otpSender: o.otpSender, eligibility: o.eligibility, botVerifier: o.botVerifier, policies, phonePolicy: o.phonePolicy,
     allowedWebOrigins: o.allowedWebOrigins, ...(o.fixedOtpCodes ? { fixedOtpCodes: o.fixedOtpCodes } : {}),
   });
-  return { identity, http: createIdentityHttp(identity), policies };
+  const geo = new GeoService({ pool: o.pool, clock: o.clock, logger: o.logger, policies, rateLimiter, appEnv: o.appEnv });
+  const catalog = new CatalogService({ pool: o.pool, clock: o.clock, logger: o.logger, policies, rateLimiter, cities: geo });
+  return { identity, http: createIdentityHttp(identity), geo, geoHttp: createGeoHttp(geo), catalog, catalogHttp: createCatalogHttp(catalog), policies };
 }

@@ -38,9 +38,18 @@ export const approvalDecision = z.strictObject({
  * A grant-decision step-up is also bound to the decision it will be used for.
  */
 export const stepUpOptions = z.strictObject({
-  operation: z.enum(['security.grant.decide', 'backoffice.passkey.register']),
+  operation: z.enum(['security.grant.decide', 'backoffice.change.decide', 'backoffice.passkey.register']),
   approvalRequestId: z.uuid().optional(),
   decision: z.enum(['APPROVE', 'REJECT']).optional(),
+});
+
+/**
+ * A two-person approved configuration change (ADR-025 #5). `change` is validated by the module that owns the action
+ * type (e.g. `catalog.service_rules.set`, `geo.city.locales.set`).
+ */
+export const changeRequest = z.strictObject({
+  actionType: z.string().regex(/^[a-z][a-z0-9_]*(\.[a-z0-9_]+){1,3}$/).max(80),
+  change: z.record(z.string(), z.unknown()),
 });
 
 /** Needed only for an additional passkey (a step-up bound to backoffice.passkey.register). */

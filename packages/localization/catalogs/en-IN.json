@@ -1,0 +1,14 @@
+{
+  "catalog.choose_service": "Choose a service",
+  "catalog.empty_city": "No services are available in {city} yet.",
+  "catalog.symptom_other": "Something else",
+  "common.result_count": "{count, plural, one {# result} other {# results}}",
+  "error.generic": "Something went wrong. Please try again.",
+  "error.not_found": "We couldn't find that.",
+  "error.rate_limited": "Too many requests. Please try again in a moment.",
+  "error.validation_failed": "Please check the details and try again.",
+  "geo.no_results": "No areas match “{query}”.",
+  "geo.not_serviceable": "We don't serve this area yet.",
+  "geo.serviceable": "We serve your area.",
+  "locale.language": "Language"
+}

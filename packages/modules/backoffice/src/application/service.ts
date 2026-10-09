@@ -7,6 +7,8 @@
 //   for high-risk actions (≤ 5 min old).
 // - Role grants: maker-checker (security.grant → security.grant.approve), three different people, payload-hash bound,
 //   executed exactly once.
+// - Change requests (Gate 4, ADR-025 #5): two-person approved configuration changes defined by other modules (city
+//   service rules, city languages); the checker's step-up is bound like a grant decision; the owning module executes.
 import type { KeyObject } from 'node:crypto';
 import type pg from 'pg';
 import { newId, type Clock } from '@hsp/kernel';
@@ -22,6 +24,7 @@ import {
   ADMIN_COOKIE, ADMIN_SESSION, APPROVAL_TTL_MS, FIRST_PASSKEY_WINDOW_MS, ADMIN_STEP_UP_MS, isPhishingResistant, isStepUpOperation,
   passkeyCeremoniesAllowed, type StepUpOperation,
 } from '../domain/permissions.ts';
+import { changeActionRegistry, type ChangeAction } from '../domain/changes.ts';
 import { SQL } from '../infrastructure/sql.ts';
 
 export interface IdpConfig {
@@ -45,6 +48,8 @@ export interface BackofficeDeps {
   readonly allowedOrigins: readonly string[];
   /** Deployment environment: passkey ceremonies are refused outside local / test until the WebAuthn review passes. */
   readonly appEnv: string;
+  /** Change-request actions wired by the app (ADR-025 #5). */
+  readonly changeActions?: readonly ChangeAction[];
 }
 
 export interface AdminRequestMeta {
@@ -90,9 +95,11 @@ export function canonicalJson(value: unknown): string {
 
 export class BackofficeService {
   readonly #d: BackofficeDeps;
+  readonly #changes: ReadonlyMap<string, ChangeAction>;
 
   constructor(deps: BackofficeDeps) {
     this.#d = deps;
+    this.#changes = changeActionRegistry(deps.changeActions ?? []);
   }
 
   #now(): Date {
@@ -320,6 +327,13 @@ export class BackofficeService {
       if (input.decision !== 'APPROVE' && input.decision !== 'REJECT') {
         throw new AppError('VALIDATION_FAILED', { fields: [{ path: 'decision', code: 'REQUIRED' }] });
       }
+      if (operation === 'backoffice.change.decide') {
+        const { request, action } = await this.#loadChange(c, input.approvalRequestId);
+        this.#require(actor, 'backoffice.change.decide', this.#checkerResource(request, action));
+        if (request['status'] !== 'PENDING' || (request['expires_at'] as Date) <= now) throw new AppError('INVALID_STATE');
+        return this.#challenge(c, actor, { purpose: 'STEP_UP', operation, resourceId: request['id'] as string,
+          payloadHash: request['payload_hash'] as Buffer, decision: input.decision }, now);
+      }
       const a = input.approvalRequestId ? ((await c.query(SQL.approval, [input.approvalRequestId])).rows[0] as Row | undefined) : undefined;
       if (!a || a['action_type'] !== 'security.grant') throw new AppError('NOT_FOUND');
       this.#require(actor, 'backoffice.grant.decide', { granteeId: a['resource_id'] as string, requesterId: a['requested_by_admin_id'] as string });
@@ -427,5 +441,116 @@ export class BackofficeService {
         changeSummary: { decision, role: payload.roleCode } }, meta);
     });
     if (decision === 'APPROVE') this.#d.logger.log('warn', 'security.admin_grant_changed', { outcome: 'EXECUTED' });
+  }
+
+  // ---------------------------------------------------------------- change requests (two-person approved configuration)
+
+  async #loadChange(c: pg.ClientBase | pg.Pool, id: string | undefined, lock = false): Promise<{ request: Row; action: ChangeAction }> {
+    const request = id ? ((await c.query(lock ? SQL.lockApproval : SQL.changeRequest, [id])).rows[0] as Row | undefined) : undefined;
+    const action = request ? this.#changes.get(request['action_type'] as string) : undefined;
+    if (!request || !action) throw new AppError('NOT_FOUND');
+    return { request, action };
+  }
+
+  #checkerResource(request: Row, action: ChangeAction) {
+    return { permission: action.checkerPermission, cityId: action.cityOf(request['payload'] as Record<string, unknown>),
+      requesterId: request['requested_by_admin_id'] as string };
+  }
+
+  /**
+   * Maker step (ADR-025 #5). The owning module validates the input and returns the exact payload; the maker needs the
+   * maker permission for the change's city. `Idempotency-Key` required: a retry replays the first response.
+   */
+  async requestChange(actor: Actor, input: { actionType: string; change: unknown }, idempotencyKey: string, meta: AdminRequestMeta):
+    Promise<{ changeRequestId: string; replayed: boolean }> {
+    const action = this.#changes.get(input.actionType);
+    if (!action) throw new AppError('VALIDATION_FAILED', { fields: [{ path: 'actionType', code: 'UNKNOWN' }] });
+    this.#require(actor, 'backoffice.change.request', { permission: action.makerPermission, cityId: undefined, requesterId: actor.id ?? null });
+    const now = this.#now();
+    const prepared = await action.prepare(input.change, now);
+    this.#require(actor, 'backoffice.change.request', { permission: action.makerPermission, cityId: prepared.cityId, requesterId: actor.id ?? null });
+    if (action.cityOf(prepared.payload) !== prepared.cityId) throw new AppError('INTERNAL');
+    const hash = sha256(canonicalJson(prepared.payload));
+    const idem = { actorKey: `admin:${actor.id ?? ''}`, idemKey: idempotencyKey, endpoint: 'POST /admin/v1/change-requests',
+      requestHash: sha256(canonicalJson({ actionType: input.actionType, change: input.change })), now };
+    return withTransaction(this.#d.pool, async (c) => {
+      let start;
+      try {
+        start = await beginIdempotent(c, idem);
+      } catch (error) {
+        if (error instanceof IdempotencyConflict) {
+          throw error.reason === 'KEY_REUSED' ? new AppError('IDEMPOTENCY_KEY_REUSED') : new AppError('REQUEST_IN_PROGRESS', { retryAfterSec: 1 });
+        }
+        throw error;
+      }
+      if (start.kind === 'REPLAY') return { ...(start.body as { changeRequestId: string }), replayed: true };
+      const id = newId();
+      await c.query(SQL.insertChangeRequest, [id, action.actionType, action.resourceType, prepared.resourceId, JSON.stringify(prepared.payload), hash,
+        action.riskLevel, actor.id, now, action.checkerPermission, new Date(now.getTime() + APPROVAL_TTL_MS)]);
+      await completeIdempotent(c, idem, 202, { changeRequestId: id });
+      await this.#audit(c, { actorType: 'ADMIN', actorId: actor.id ?? null, actorSessionId: actor.sessionId ?? null, action: 'approval.requested',
+        resourceType: 'backoffice.approval_request', resourceId: id, cityId: prepared.cityId, outcome: 'SUCCESS',
+        changeSummary: { actionType: action.actionType, ...prepared.summary } }, meta);
+      return { changeRequestId: id, replayed: false };
+    });
+  }
+
+  /**
+   * Checker decision. Needs the passkey step-up bound to this change request, its payload hash and the decision
+   * (consumed here, once). APPROVE then executes the stored payload in the owning module; if that fails, the request
+   * stays APPROVED and `executeChange` retries it.
+   */
+  async decideChange(actor: Actor, changeRequestId: string, decision: 'APPROVE' | 'REJECT', stepUpId: string | undefined, meta: AdminRequestMeta):
+    Promise<{ status: 'EXECUTED' | 'APPROVED' | 'REJECTED' }> {
+    const now = this.#now();
+    const action = await withTransaction(this.#d.pool, async (c) => {
+      const { request, action } = await this.#loadChange(c, changeRequestId, true);
+      const resource = this.#checkerResource(request, action);
+      this.#require(actor, 'backoffice.change.decide', resource);
+      if (request['status'] !== 'PENDING' || (request['expires_at'] as Date) <= now) throw new AppError('INVALID_STATE');
+      if (!constantTimeEqual(sha256(canonicalJson(request['payload'])), request['payload_hash'] as Buffer)) throw new AppError('INVALID_STATE');
+      await this.#useStepUp(c, actor, stepUpId, { operation: 'backoffice.change.decide', resourceId: changeRequestId,
+        payloadHash: request['payload_hash'] as Buffer, decision }, now);
+      await c.query(SQL.decideApproval, [changeRequestId, decision === 'APPROVE' ? 'APPROVED' : 'REJECTED', actor.id, now]);
+      await this.#audit(c, { actorType: 'ADMIN', actorId: actor.id ?? null, actorSessionId: actor.sessionId ?? null, action: 'approval.decided',
+        resourceType: 'backoffice.approval_request', resourceId: changeRequestId, cityId: resource.cityId, outcome: 'SUCCESS',
+        changeSummary: { decision, actionType: action.actionType } }, meta);
+      return action;
+    });
+    if (decision === 'REJECT') return { status: 'REJECTED' };
+    try {
+      await this.#executeChange(actor, changeRequestId, action, meta);
+      return { status: 'EXECUTED' };
+    } catch (error) {
+      this.#d.logger.log('warn', 'backoffice.change_execution_failed', { actionType: action.actionType,
+        errorKind: error instanceof AppError ? error.code : 'INTERNAL' });
+      return { status: 'APPROVED' };
+    }
+  }
+
+  /** Retries the execution of an APPROVED change request (checker permission for its city, not the maker). */
+  async executeChange(actor: Actor, changeRequestId: string, meta: AdminRequestMeta): Promise<{ status: 'EXECUTED' }> {
+    const { request, action } = await this.#loadChange(this.#d.pool, changeRequestId);
+    this.#require(actor, 'backoffice.change.decide', this.#checkerResource(request, action));
+    if (request['status'] === 'EXECUTED') return { status: 'EXECUTED' };
+    if (request['status'] !== 'APPROVED') throw new AppError('INVALID_STATE');
+    await this.#executeChange(actor, changeRequestId, action, meta);
+    return { status: 'EXECUTED' };
+  }
+
+  async #executeChange(actor: Actor, changeRequestId: string, action: ChangeAction, meta: AdminRequestMeta): Promise<void> {
+    const request = (await this.#d.pool.query(SQL.changeRequest, [changeRequestId])).rows[0] as Row | undefined;
+    if (!request || request['status'] !== 'APPROVED') throw new AppError('INVALID_STATE');
+    const payload = request['payload'] as Record<string, unknown>;
+    if (!constantTimeEqual(sha256(canonicalJson(payload)), request['payload_hash'] as Buffer)) throw new AppError('INVALID_STATE');
+    // The owning module applies the stored payload in its own transaction (idempotent per change request id).
+    await action.execute(changeRequestId, payload, { now: this.#now(), actorId: actor.id ?? '', requestId: meta.requestId });
+    await withTransaction(this.#d.pool, async (c) => {
+      const marked = await c.query(SQL.markExecuted, [changeRequestId]);
+      if (marked.rowCount !== 1) return; // a concurrent retry marked it first
+      await this.#audit(c, { actorType: 'ADMIN', actorId: actor.id ?? null, actorSessionId: actor.sessionId ?? null, action: 'approval.executed',
+        resourceType: 'backoffice.approval_request', resourceId: changeRequestId, cityId: action.cityOf(payload), outcome: 'SUCCESS',
+        changeSummary: { actionType: action.actionType } }, meta);
+    });
   }
 }

@@ -1,0 +1,8 @@
+{
+  "$comment": "Category and service-type codes of the V1 catalog tree (Phase 1 03 §8.1, ADR-020). They are data: ESLint rejects them as string literals in apps, modules and UI packages (Gate 4 exit criterion, ADR-025 #11). Tests, fixtures and the seed are exempt. tools/architecture/__tests__/catalog-codes.test.ts keeps this list equal to the fixture tree.",
+  "categories": ["PLUMBING", "ELECTRICAL", "APPLIANCE_HOME_EQUIPMENT"],
+  "serviceTypes": [
+    "PLUMBING_GENERAL", "PLUMBING_TANK_MOTOR", "ELECTRICAL_GENERAL", "REFRIGERATOR", "RO_WATER_PURIFIER", "WASHING_MACHINE", "GEYSER",
+    "AIR_COOLER", "AC", "INVERTER", "MIXER_GRINDER", "MICROWAVE", "TV"
+  ]
+}

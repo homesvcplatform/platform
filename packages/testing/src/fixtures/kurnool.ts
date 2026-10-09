@@ -49,6 +49,14 @@ export const LOCALITIES = Array.from({ length: 12 }, (_, i) => {
   };
 });
 
+/** Fictional local-language and colloquial aliases for locality search (Gate 4). `normalized` follows the geo module rule. */
+export const LOCALITY_ALIASES = [
+  { locality: 'LOC-05', alias: 'Railway Colony (test)', script: 'Latn' },
+  { locality: 'LOC-05', alias: 'రైల్వే కాలనీ', script: 'Telu' },
+  { locality: 'LOC-09', alias: 'Old Market (test)', script: 'Latn' },
+  { locality: 'LOC-09', alias: 'పాత మార్కెట్', script: 'Telu' },
+].map((a) => ({ ...a, normalized: a.alias.normalize('NFC').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ').trim() }));
+
 /** Adjacency: a chain inside each zone plus one cross-zone link (LOC-06 <-> LOC-07), both directions. */
 export const ADJACENCY = (() => {
   const edges: { from: string; to: string; minutes: number }[] = [];
