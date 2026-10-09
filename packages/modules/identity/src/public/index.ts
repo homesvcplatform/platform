@@ -4,7 +4,7 @@
 export const moduleName = 'identity' as const;
 export const schemaName = 'identity' as const;
 export type { BotVerifier, OtpSender, SurfaceEligibility } from './ports.ts';
-export { IdentityService } from '../application/service.ts';
+export { IdentityService, subjectKeyStore } from '../application/service.ts';
 export type { IdentityDeps, IdentityKeys, LoginResult, PinVerification, RequestMeta, WebRequest } from '../application/service.ts';
 export { registerIdentityPolicies } from '../domain/policies.ts';
 export type { SessionResource } from '../domain/policies.ts';

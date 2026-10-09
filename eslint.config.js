@@ -12,7 +12,8 @@ const boundaryPatterns = [
 ];
 
 // SR-06: field decryption happens only in the disclosure / reveal paths. The raw field-crypto factory may be imported
-// only by the modules listed in the override below (identity: phone reveal for OTP delivery).
+// only by the modules listed in the override below (identity: phone reveal for OTP delivery; customers: the address
+// snapshot opened for the jobs disclosure service at L2, Gate 5).
 const fieldCryptoRestriction = [
   { name: '@hsp/security', importNames: ['createFieldCrypto'], message: 'Field decryption is restricted to disclosure / reveal services (SR-06).' },
 ];
@@ -47,7 +48,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['packages/modules/identity/src/**/*.ts', '**/__tests__/**', '**/*.test.ts'],
+    files: ['packages/modules/identity/src/**/*.ts', 'packages/modules/customers/src/**/*.ts', '**/__tests__/**', '**/*.test.ts'],
     rules: { 'no-restricted-imports': ['error', { patterns: boundaryPatterns }] },
   },
   {

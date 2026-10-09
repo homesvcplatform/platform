@@ -79,7 +79,8 @@ type Row = Record<string, unknown>;
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const COOKIE_VALUE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([A-Za-z0-9_-]{43})$/;
 
-function subjectKeyStore(client: pg.ClientBase): SubjectKeyStore {
+/** Wrapped data keys in identity.subject_keys (SR-06). Exposed through the facade so other modules never query the table. */
+export function subjectKeyStore(client: pg.ClientBase | pg.Pool): SubjectKeyStore {
   return {
     async find(ctx: EncryptionContext): Promise<StoredSubjectKey | undefined> {
       const r = await client.query(SQL.subjectKey, [ctx.subjectId, ctx.dataClass]);
