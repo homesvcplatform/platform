@@ -18,7 +18,13 @@
     "pg": "8.23.0",
     "@hsp/module-catalog": "workspace:*",
     "@hsp/module-geo": "workspace:*",
-    "@hsp/localization": "workspace:*"
+    "@hsp/localization": "workspace:*",
+    "@hsp/module-compliance": "workspace:*",
+    "@hsp/module-customers": "workspace:*",
+    "@hsp/module-jobs": "workspace:*",
+    "@hsp/module-payments": "workspace:*",
+    "@hsp/module-pricing": "workspace:*",
+    "@hsp/module-workforce": "workspace:*"
   },
   "devDependencies": {
     "@hsp/adapter-kms-local": "workspace:*",

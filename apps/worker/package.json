@@ -9,6 +9,25 @@
     "start": "node src/main.ts"
   },
   "dependencies": {
-    "@hsp/kernel": "workspace:*"
+    "@hsp/db": "workspace:*",
+    "@hsp/kernel": "workspace:*",
+    "@hsp/module-catalog": "workspace:*",
+    "@hsp/module-compliance": "workspace:*",
+    "@hsp/module-customers": "workspace:*",
+    "@hsp/module-geo": "workspace:*",
+    "@hsp/module-identity": "workspace:*",
+    "@hsp/module-jobs": "workspace:*",
+    "@hsp/module-payments": "workspace:*",
+    "@hsp/module-pricing": "workspace:*",
+    "@hsp/module-workforce": "workspace:*",
+    "@hsp/observability": "workspace:*",
+    "@hsp/policy": "workspace:*",
+    "@hsp/security": "workspace:*",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@hsp/adapter-kms-local": "workspace:*",
+    "@hsp/testing": "workspace:*",
+    "@types/pg": "8.23.1"
   }
 }

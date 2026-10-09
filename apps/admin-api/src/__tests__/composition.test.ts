@@ -17,7 +17,7 @@ function compose(appEnv: AppEnvironment, rateLimitStore: RateLimitStore | undefi
   return composeAdminApi({
     pool: new pg.Pool({ max: 1 }), clock: systemClock, logger: createLogger('hsp-compose-test', 'error', () => undefined),
     idp: createTestIdp().config, webauthn: { rpId: 'admin.test.invalid', origin: 'https://admin.test.invalid' }, csrfKey: randomBytes(32),
-    requestHashKey: randomBytes(32), allowedOrigins: [], appEnv, rateLimitStore,
+    requestHashKey: randomBytes(32), allowedOrigins: [], appEnv, rateLimitStore, jobsCodeKey: randomBytes(32),
     identity: { kms: createEphemeralKeyring(env).forRole('admin-api'), keys: { otpPepper: randomBytes(32), blindIndexPepper: randomBytes(32),
       refreshRotationKey: randomBytes(32), csrfKey: randomBytes(32), requestHashKey: randomBytes(32) }, tokenSigner: signing.signer,
       tokenVerificationKeys: signing.publicKeys, issuer: 'https://auth.test.invalid' },

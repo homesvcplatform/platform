@@ -40,6 +40,7 @@ export const SQL = {
      ORDER BY z.code
      LIMIT 1`,
   zoneOf: `SELECT zone_id FROM geo.localities WHERE id = $1`,
+  localityDistance: `SELECT ST_Distance(l.centroid, ST_SetSRID(ST_MakePoint($3, $2), 4326)::geography) AS metres FROM geo.localities l WHERE l.id = $1`,
   cityAdjacency: `
     SELECT a.locality_id, a.neighbor_id, a.travel_minutes_typical
       FROM geo.locality_adjacency a JOIN geo.localities l ON l.id = a.locality_id

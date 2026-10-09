@@ -6,11 +6,18 @@
 import type { KeyObject } from 'node:crypto';
 import type pg from 'pg';
 import type { AppEnvironment, Clock } from '@hsp/kernel';
-import { createBackofficeHttp, backofficeEndpoints } from '@hsp/module-backoffice/http';
+import { createBackofficeHttp, backofficeEndpoints, PROXY_ASSERTION_HEADER } from '@hsp/module-backoffice/http';
 import { BackofficeService, registerBackofficePolicies, type IdpConfig } from '@hsp/module-backoffice';
-import { serviceRulesChangeAction } from '@hsp/module-catalog';
+import { CatalogService, registerCatalogPolicies, serviceRulesChangeAction } from '@hsp/module-catalog';
+import { recordDisclosure } from '@hsp/module-compliance';
+import { CustomersService } from '@hsp/module-customers';
+import { createJobsAdminHttp, jobsAdminEndpoints, type JobsHttpRequest } from '@hsp/module-jobs/http';
+import { arrivalOverrideChangeAction, FIXTURE_LIFECYCLE_POLICY, JobsService, registerJobsPolicies, type LifecyclePolicy } from '@hsp/module-jobs';
+import { createPlaceholderBillIssuer } from '@hsp/module-payments';
+import { PricingService } from '@hsp/module-pricing';
+import { TechnicianDirectory } from '@hsp/module-workforce';
 import { cityLocalesChangeAction, GeoService } from '@hsp/module-geo';
-import { IdentityService, registerIdentityPolicies, type IdentityKeys } from '@hsp/module-identity';
+import { IdentityService, registerIdentityPolicies, subjectKeyStore, type IdentityKeys } from '@hsp/module-identity';
 import type { CatalogIssue } from '@hsp/localization';
 import type { Logger } from '@hsp/observability';
 import { assertEndpointRegistry, PolicyRegistry } from '@hsp/policy';
@@ -38,6 +45,9 @@ export interface AdminApiCompositionOptions {
   };
   /** Translation-catalog issues for the locale enablement gate; defaults to the repository catalogs (tests inject). */
   readonly catalogIssues?: () => readonly CatalogIssue[];
+  /** HMAC key for visit codes (same secret as the api role). */
+  readonly jobsCodeKey: Buffer;
+  readonly lifecyclePolicy?: LifecyclePolicy;
 }
 
 const unavailable = { async sendOtp() { return { accepted: false }; } };
@@ -48,22 +58,36 @@ export function composeAdminApi(o: AdminApiCompositionOptions) {
   });
   registerBackofficePolicies(policies);
   registerIdentityPolicies(policies);
-  assertEndpointRegistry(backofficeEndpoints, policies);
+  registerCatalogPolicies(policies);
+  registerJobsPolicies(policies);
+  assertEndpointRegistry([...backofficeEndpoints, ...jobsAdminEndpoints], policies);
   const rateLimiter = createRateLimiter(assertRateLimitStore(o.rateLimitStore, o.appEnv));
   const geo = new GeoService({ pool: o.pool, clock: o.clock, logger: o.logger, policies, rateLimiter, appEnv: o.appEnv });
+  const dekCache = createDekCache();
+  const catalog = new CatalogService({ pool: o.pool, clock: o.clock, logger: o.logger, policies, rateLimiter, cities: geo });
+  const pricing = new PricingService({ pool: o.pool, clock: o.clock });
+  const customers = new CustomersService({ pool: o.pool, clock: o.clock, kms: o.identity.kms, dekCache, keyStore: subjectKeyStore, localities: geo });
+  const jobs = new JobsService({
+    pool: o.pool, clock: o.clock, logger: o.logger, policies, policy: o.lifecyclePolicy ?? FIXTURE_LIFECYCLE_POLICY, codeKey: o.jobsCodeKey,
+    requestHashKey: o.requestHashKey, addresses: customers, offers: catalog, pricing, technicians: new TechnicianDirectory(o.pool), localities: geo,
+    bills: createPlaceholderBillIssuer(pricing), recordDisclosure: (e) => recordDisclosure(o.pool, e),
+  });
   const changeActions = [
     serviceRulesChangeAction({ pool: o.pool, cities: geo }),
     cityLocalesChangeAction({ pool: o.pool, appEnv: o.appEnv, ...(o.catalogIssues ? { catalogIssues: o.catalogIssues } : {}) }),
+    arrivalOverrideChangeAction(jobs),
   ];
   const backoffice = new BackofficeService({
     pool: o.pool, clock: o.clock, logger: o.logger, policies, rateLimiter, idp: o.idp, webauthn: o.webauthn, csrfKey: o.csrfKey,
     requestHashKey: o.requestHashKey, allowedOrigins: o.allowedOrigins, appEnv: o.appEnv, changeActions,
   });
   const identity = new IdentityService({
-    pool: o.pool, clock: o.clock, kms: o.identity.kms, dekCache: createDekCache(), keys: o.identity.keys, tokenSigner: o.identity.tokenSigner,
+    pool: o.pool, clock: o.clock, kms: o.identity.kms, dekCache, keys: o.identity.keys, tokenSigner: o.identity.tokenSigner,
     tokenVerificationKeys: o.identity.tokenVerificationKeys, issuer: o.identity.issuer, rateLimiter, logger: o.logger,
     otpSender: unavailable, eligibility: { isEligible: async () => false }, botVerifier: { verify: async () => false }, policies,
     phonePolicy: 'RESERVED_TEST_RANGE_ONLY', allowedWebOrigins: [],
   });
-  return { backoffice, identity, policies, http: createBackofficeHttp(backoffice) };
+  const adminActor = (req: JobsHttpRequest) => backoffice.authenticate({ method: req.method, proxyAssertion: req.headers[PROXY_ASSERTION_HEADER],
+    cookieHeader: req.headers['cookie'], origin: req.headers['origin'], csrfHeader: req.headers['x-csrf-token'] });
+  return { backoffice, identity, jobs, policies, http: createBackofficeHttp(backoffice), jobsHttp: createJobsAdminHttp(jobs, adminActor) };
 }

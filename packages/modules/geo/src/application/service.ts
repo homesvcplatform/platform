@@ -100,6 +100,20 @@ export class GeoService {
     return { serviceable: r['city_status'] === 'PILOT' || r['city_status'] === 'LIVE', cityId: r['city_id'] as string, localityId: r['locality_id'] as string };
   }
 
+  /** Facade (customers port): city, zone and serviceability of a locality. */
+  async locality(localityId: string): Promise<{ cityId: string; zoneId: string; serviceable: boolean } | null> {
+    if (!UUID.test(localityId)) return null;
+    const r = (await this.#d.pool.query(SQL.localityServiceability, [localityId])).rows[0] as Row | undefined;
+    return r ? { cityId: r['city_id'] as string, zoneId: r['zone_id'] as string, serviceable: r['serviceable'] === true } : null;
+  }
+
+  /** Facade (jobs port): metres from a locality's centroid to a point (wait evidence), null when unknown. */
+  async metresFromLocality(localityId: string, point: { lat: number; lng: number }): Promise<number | null> {
+    if (!UUID.test(localityId) || !isInIndia(point)) return null;
+    const r = (await this.#d.pool.query(SQL.localityDistance, [localityId, point.lat, point.lng])).rows[0] as Row | undefined;
+    return r ? Number(r['metres']) : null;
+  }
+
   /** Facade: the zone of a locality (null when unknown). */
   async zoneOf(localityId: string): Promise<string | null> {
     if (!UUID.test(localityId)) return null;

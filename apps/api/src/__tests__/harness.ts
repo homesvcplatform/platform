@@ -46,6 +46,7 @@ export async function createApiHarness(opts: { rateLimitStore?: RateLimitStore; 
   const pools: pg.Pool[] = [];
   const bot = new Set(opts.botTokens ?? []);
   const rateLimitStore = opts.rateLimitStore ?? new MemoryRateLimitStore();
+  const jobsCodeKey = randomBytes(32);
 
   const build = async (dbRole: 'app_api' | 'app_voice' | 'app_worker', kmsRole: string) => {
     const pool = new pg.Pool({ connectionString: await db.loginFor(dbRole), max: 5 });
@@ -53,7 +54,7 @@ export async function createApiHarness(opts: { rateLimitStore?: RateLimitStore; 
     return composeApi({
       pool, clock, logger, kms: keyring.forRole(kmsRole), tokenSigner: signing.signer, tokenVerificationKeys: signing.publicKeys, issuer: ISSUER,
       keys, otpSender: sms.sender, eligibility: { isEligible: async (userId, surface) => surface === 'CUSTOMER_WEB' || technicians.has(userId) },
-      botVerifier: { verify: async (t) => bot.has(t) }, phonePolicy: 'RESERVED_TEST_RANGE_ONLY', allowedWebOrigins: [ORIGIN], rateLimitStore, appEnv: 'test',
+      botVerifier: { verify: async (t) => bot.has(t) }, phonePolicy: 'RESERVED_TEST_RANGE_ONLY', allowedWebOrigins: [ORIGIN], rateLimitStore, appEnv: 'test', jobsCodeKey,
     });
   };
   const api = await build('app_api', 'api');

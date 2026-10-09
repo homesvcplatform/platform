@@ -60,12 +60,30 @@ importers:
       '@hsp/module-catalog':
         specifier: workspace:*
         version: link:../../packages/modules/catalog
+      '@hsp/module-compliance':
+        specifier: workspace:*
+        version: link:../../packages/modules/compliance
+      '@hsp/module-customers':
+        specifier: workspace:*
+        version: link:../../packages/modules/customers
       '@hsp/module-geo':
         specifier: workspace:*
         version: link:../../packages/modules/geo
       '@hsp/module-identity':
         specifier: workspace:*
         version: link:../../packages/modules/identity
+      '@hsp/module-jobs':
+        specifier: workspace:*
+        version: link:../../packages/modules/jobs
+      '@hsp/module-payments':
+        specifier: workspace:*
+        version: link:../../packages/modules/payments
+      '@hsp/module-pricing':
+        specifier: workspace:*
+        version: link:../../packages/modules/pricing
+      '@hsp/module-workforce':
+        specifier: workspace:*
+        version: link:../../packages/modules/workforce
       '@hsp/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -105,6 +123,12 @@ importers:
       '@hsp/module-catalog':
         specifier: workspace:*
         version: link:../../packages/modules/catalog
+      '@hsp/module-compliance':
+        specifier: workspace:*
+        version: link:../../packages/modules/compliance
+      '@hsp/module-customers':
+        specifier: workspace:*
+        version: link:../../packages/modules/customers
       '@hsp/module-geo':
         specifier: workspace:*
         version: link:../../packages/modules/geo
@@ -114,6 +138,15 @@ importers:
       '@hsp/module-jobs':
         specifier: workspace:*
         version: link:../../packages/modules/jobs
+      '@hsp/module-payments':
+        specifier: workspace:*
+        version: link:../../packages/modules/payments
+      '@hsp/module-pricing':
+        specifier: workspace:*
+        version: link:../../packages/modules/pricing
+      '@hsp/module-workforce':
+        specifier: workspace:*
+        version: link:../../packages/modules/workforce
       '@hsp/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -173,9 +206,61 @@ importers:
 
   apps/worker:
     dependencies:
+      '@hsp/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@hsp/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@hsp/module-catalog':
+        specifier: workspace:*
+        version: link:../../packages/modules/catalog
+      '@hsp/module-compliance':
+        specifier: workspace:*
+        version: link:../../packages/modules/compliance
+      '@hsp/module-customers':
+        specifier: workspace:*
+        version: link:../../packages/modules/customers
+      '@hsp/module-geo':
+        specifier: workspace:*
+        version: link:../../packages/modules/geo
+      '@hsp/module-identity':
+        specifier: workspace:*
+        version: link:../../packages/modules/identity
+      '@hsp/module-jobs':
+        specifier: workspace:*
+        version: link:../../packages/modules/jobs
+      '@hsp/module-payments':
+        specifier: workspace:*
+        version: link:../../packages/modules/payments
+      '@hsp/module-pricing':
+        specifier: workspace:*
+        version: link:../../packages/modules/pricing
+      '@hsp/module-workforce':
+        specifier: workspace:*
+        version: link:../../packages/modules/workforce
+      '@hsp/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@hsp/policy':
+        specifier: workspace:*
+        version: link:../../packages/policy
+      '@hsp/security':
+        specifier: workspace:*
+        version: link:../../packages/security
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
+    devDependencies:
+      '@hsp/adapter-kms-local':
+        specifier: workspace:*
+        version: link:../../packages/adapters/kms-local
+      '@hsp/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
 
   packages/adapters/ai-fake: {}
 
