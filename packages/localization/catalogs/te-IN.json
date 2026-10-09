@@ -1,0 +1,14 @@
+{
+  "catalog.choose_service": "సేవను ఎంచుకోండి",
+  "catalog.empty_city": "{city}లో ఇంకా సేవలు అందుబాటులో లేవు.",
+  "catalog.symptom_other": "ఇంకేదైనా",
+  "common.result_count": "{count, plural, one {# ఫలితం} other {# ఫలితాలు}}",
+  "error.generic": "ఏదో పొరపాటు జరిగింది. దయచేసి మళ్లీ ప్రయత్నించండి.",
+  "error.not_found": "అది కనుగొనబడలేదు.",
+  "error.rate_limited": "చాలా ఎక్కువ అభ్యర్థనలు వచ్చాయి. దయచేసి కొద్దిసేపటి తర్వాత మళ్లీ ప్రయత్నించండి.",
+  "error.validation_failed": "దయచేసి వివరాలను తనిఖీ చేసి మళ్లీ ప్రయత్నించండి.",
+  "geo.no_results": "“{query}”కి సరిపోయే ప్రాంతాలు లేవు.",
+  "geo.not_serviceable": "ఈ ప్రాంతంలో మేము ఇంకా సేవలు అందించడం లేదు.",
+  "geo.serviceable": "మేము మీ ప్రాంతంలో సేవలు అందిస్తున్నాము.",
+  "locale.language": "భాష"
+}
