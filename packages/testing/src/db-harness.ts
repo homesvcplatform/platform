@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import {
-  allSchemas, bootstrapCluster, bootstrapDatabase, loadMigrations, MIGRATOR_ROLE, ownershipFromModulesJson, runMigrations,
+  allSchemas, bootstrapCluster, bootstrapDatabase, installTimerQueue, loadMigrations, MIGRATOR_ROLE, ownershipFromModulesJson, runMigrations,
   type Migration,
 } from '@hsp/db';
 
@@ -71,7 +71,10 @@ export async function createTestDatabase(opts: { migrate?: boolean } = {}): Prom
   await migrator.connect();
 
   const migrations = repoMigrations();
-  if (opts.migrate !== false) await runMigrations(migrator, migrations);
+  if (opts.migrate !== false) {
+    await runMigrations(migrator, migrations);
+    await installTimerQueue(migratorUrl.toString());
+  }
 
   const logins: string[] = [];
   return {

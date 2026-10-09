@@ -14,4 +14,6 @@ export type { SchemaOwnership } from './query-guard.ts';
 export { ALL_DB_GROUP_ROLES, DB_ROLE_FOR_PROCESS, MIGRATOR_ROLE, RESTRICTED_DB_ROLES, RUNTIME_DB_ROLES } from './roles.ts';
 export type { RuntimeDbRole } from './roles.ts';
 export { TransactionBoundaryError, UnitOfWork } from './unit-of-work.ts';
+export { cancelTimer, installTimerQueue, scheduleTimer, startTimerRunner, TIMER_SCHEMA } from './timers.ts';
+export type { TimerRequest, TimerRunnerOptions } from './timers.ts';
 export type { TransactionalCouplingPoint } from './unit-of-work.ts';
