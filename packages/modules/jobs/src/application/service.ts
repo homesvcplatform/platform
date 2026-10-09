@@ -201,7 +201,7 @@ export class JobsService {
       throw new AppError('PRICE_CHANGED', { details: { visitFeePaise: snapshot?.amountPaise ?? fee.amountPaise } });
     }
 
-    return withTransaction(this.#d.pool, (c) => this.#idempotent(c, { actorKey: `${k.by.type.toLowerCase()}:${k.by.id ?? ''}`, key: idempotencyKey,
+    return withTransaction(this.#d.pool, (c) => this.#idempotent(c, { actorKey: `${k.by.type === 'ADMIN' ? 'admin' : 'user'}:${k.by.id ?? ''}`, key: idempotencyKey,
       endpoint: k.endpoint, body: { ...input, customerUserId: k.customerUserId } }, async () => {
       await c.query(SQL.bookingLock, [k.customerUserId]);
       const again = (await c.query(SQL.jobByClientRequest, [k.customerUserId, input.clientRequestId])).rows[0] as Row | undefined;
@@ -307,7 +307,7 @@ export class JobsService {
     const snapshotId = await this.#d.pricing.snapshot({ rateCardId: rules.rateCardId, ruleRefs: { feeType: 'CANCELLATION' },
       inputs: { jobId, visitId, stage: planned.stage, at: this.#now().toISOString() },
       outputs: { customerFeePaise: planned.customerFeePaise, technicianCompensationPaise: planned.technicianCompensationPaise } });
-    const r = await withTransaction(this.#d.pool, (c) => this.#idempotent(c, { actorKey: `customer:${actor.id ?? ''}`, key: idempotencyKey,
+    const r = await withTransaction(this.#d.pool, (c) => this.#idempotent(c, { actorKey: `user:${actor.id ?? ''}`, key: idempotencyKey,
       endpoint: 'POST /v1/customer/jobs/:jobId/cancel', body: { jobId, ...input } }, async () => {
       const job = (await c.query(SQL.lockJob, [jobId])).rows[0] as Row;
       const visit = (await c.query(SQL.lockVisit, [visitId])).rows[0] as Row;
@@ -439,7 +439,7 @@ export class JobsService {
   async #technicianCommand<T>(actor: Actor, visitId: string, endpoint: string, body: unknown, idempotencyKey: string, meta: RequestMeta,
     fn: (c: pg.ClientBase, visit: Row) => Promise<{ status: number; body: T }>): Promise<T> {
     await this.#assigneeVisit(actor, visitId, 'jobs.visit.act');
-    const r = await withTransaction(this.#d.pool, (c) => this.#idempotent(c, { actorKey: `technician:${actor.id ?? ''}`, key: idempotencyKey,
+    const r = await withTransaction(this.#d.pool, (c) => this.#idempotent(c, { actorKey: `user:${actor.id ?? ''}`, key: idempotencyKey,
       endpoint, body: { visitId, body }, ttlMs: TECH_IDEMPOTENCY_TTL_MS }, async () => {
       const visit = (await c.query(SQL.lockVisit, [visitId])).rows[0] as Row;
       const active = (await c.query(SQL.activeAssignment, [visitId])).rows[0] as Row | undefined;
@@ -471,7 +471,7 @@ export class JobsService {
     const v0 = (await this.#assigneeVisit(actor, visitId, 'jobs.visit.act')).visit;
     const rules = await this.#d.pricing.lifecycleFeeRules(v0['city_id'] as string, this.#now());
     const outcome = await withTransaction(this.#d.pool, async (c) => {
-      const idem = { actorKey: `technician:${actor.id ?? ''}`, idemKey: idempotencyKey, endpoint: 'POST /v1/technician/visits/:visitId/arrive',
+      const idem = { actorKey: `user:${actor.id ?? ''}`, idemKey: idempotencyKey, endpoint: 'POST /v1/technician/visits/:visitId/arrive',
         requestHash: sha256(canonical({ visitId, startCode: input.startCode })), now: this.#now(), ttlMs: TECH_IDEMPOTENCY_TTL_MS };
       let start;
       try {

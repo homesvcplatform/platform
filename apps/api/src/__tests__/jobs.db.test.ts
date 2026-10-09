@@ -53,7 +53,7 @@ async function customer(): Promise<Customer> {
   return { cookie: (r.headers['set-cookie'] ?? '').split(';')[0] ?? '', csrf: (r.body as { csrfToken: string }).csrfToken, userId: await userIdOf(phone) };
 }
 
-interface Technician { token: string; userId: string }
+interface Technician { token: string; userId: string; phone: string; issuedAt: number }
 
 async function technician(capacity = 1): Promise<Technician> {
   const phone = testPhone();
@@ -64,12 +64,17 @@ async function technician(capacity = 1): Promise<Technician> {
       languages, birth_year, onboarding_status, status, capacity, ivr_locale)
     VALUES ($1, $2, 'Test Technician', 'SMARTPHONE', $3, $4, '{te}', 1990, 'READY', 'ACTIVE', $5, 'te-IN')`,
   [userId, randomBytes(24), CITY.id, localityByCode('LOC-02').id, capacity]);
+  return appSession(phone, userId);
+}
+
+/** App login (access tokens live 10 minutes, so time-travel tests sign in again when the clock has moved on). */
+async function appSession(phone: string, userId: string): Promise<Technician> {
   h.clock.advance(31_000); // OTP resend cooldown
   const o = await otp(phone);
   const r = await identity('POST', '/v1/auth/otp/verify', { challengeId: o.challengeId, code: o.code, surface: 'TECHNICIAN_APP',
     device: { platform: 'ANDROID_APP', appVersion: '1.0.0' } });
   expect(r.status, JSON.stringify(r.body)).toBe(200);
-  return { token: (r.body as { accessToken: string }).accessToken, userId };
+  return { token: (r.body as { accessToken: string }).accessToken, userId, phone, issuedAt: h.clock.now().getTime() };
 }
 
 /** A synthetic address sealed with kms-local under the customer's pii-address key (the seed's fixture crypto can't be opened). */
@@ -99,9 +104,10 @@ const asCustomer = (c: Customer, method: string, path: string, body?: unknown, k
   headers: { cookie: c.cookie, origin: ORIGIN, 'x-csrf-token': c.csrf, ...(key ? { 'idempotency-key': key } : {}) },
 });
 
-const asTech = (t: Technician, method: string, path: string, body?: unknown, key: string | null = randomUUID()) => h.api.jobsHttp({
-  method, path, body, meta: meta(), headers: { authorization: `Bearer ${t.token}`, ...(key ? { 'idempotency-key': key } : {}) },
-});
+async function asTech(t: Technician, method: string, path: string, body?: unknown, key: string | null = randomUUID()) {
+  if (h.clock.now().getTime() - t.issuedAt > 8 * 60_000) Object.assign(t, await appSession(t.phone, t.userId));
+  return h.api.jobsHttp({ method, path, body, meta: meta(), headers: { authorization: `Bearer ${t.token}`, ...(key ? { 'idempotency-key': key } : {}) } });
+}
 
 async function book(c: Customer, body: Record<string, unknown>): Promise<{ jobId: string; visitId: string }> {
   const r = await asCustomer(c, 'POST', '/v1/customer/jobs', body);
