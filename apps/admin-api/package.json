@@ -10,26 +10,28 @@
   },
   "dependencies": {
     "@hsp/kernel": "workspace:*",
-    "@hsp/module-identity": "workspace:*",
-    "@hsp/module-backoffice": "workspace:*",
-    "@hsp/policy": "workspace:*",
-    "@hsp/security": "workspace:*",
-    "@hsp/observability": "workspace:*",
-    "pg": "8.23.0",
-    "@hsp/module-catalog": "workspace:*",
-    "@hsp/module-geo": "workspace:*",
     "@hsp/localization": "workspace:*",
+    "@hsp/module-backoffice": "workspace:*",
+    "@hsp/module-catalog": "workspace:*",
     "@hsp/module-compliance": "workspace:*",
     "@hsp/module-customers": "workspace:*",
+    "@hsp/module-diagnosis": "workspace:*",
+    "@hsp/module-geo": "workspace:*",
+    "@hsp/module-identity": "workspace:*",
     "@hsp/module-jobs": "workspace:*",
     "@hsp/module-payments": "workspace:*",
     "@hsp/module-pricing": "workspace:*",
-    "@hsp/module-workforce": "workspace:*"
+    "@hsp/module-workforce": "workspace:*",
+    "@hsp/observability": "workspace:*",
+    "@hsp/policy": "workspace:*",
+    "@hsp/security": "workspace:*",
+    "pg": "8.23.0"
   },
   "devDependencies": {
     "@hsp/adapter-kms-local": "workspace:*",
     "@hsp/adapter-sms-fake": "workspace:*",
     "@hsp/errors": "workspace:*",
+    "@hsp/events": "workspace:*",
     "@hsp/testing": "workspace:*",
     "@types/pg": "8.23.1"
   }

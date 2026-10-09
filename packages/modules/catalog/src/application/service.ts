@@ -170,6 +170,26 @@ export class CatalogService {
     return r ? repairItem(r) : null;
   }
 
+  /** Codes of the ACTIVE problems of a service type (diagnosis validation, ADR-027 #1). */
+  async problemCodes(serviceTypeId: string): Promise<string[]> {
+    if (!UUID.test(serviceTypeId)) return [];
+    return ((await this.#d.pool.query(SQL.problems, [serviceTypeId])).rows as Row[]).map((r) => r['code'] as string);
+  }
+
+  /** ACTIVE repair items by id, with the service type they belong to (unknown or retired ids are absent). */
+  async getRepairItemsByIds(ids: readonly string[]): Promise<(RepairItem & { serviceTypeId: string })[]> {
+    const valid = ids.filter((i) => UUID.test(i));
+    if (valid.length === 0) return [];
+    return ((await this.#d.pool.query(SQL.repairItemsByIds, [valid])).rows as Row[]).map((r) => ({ ...repairItem(r), serviceTypeId: r['service_type_id'] as string }));
+  }
+
+  /** ACTIVE materials by id (unknown or retired ids are absent). */
+  async getMaterialsByIds(ids: readonly string[]): Promise<{ id: string; code: string; unit: string }[]> {
+    const valid = ids.filter((i) => UUID.test(i));
+    if (valid.length === 0) return [];
+    return ((await this.#d.pool.query(SQL.materialsByIds, [valid])).rows as Row[]).map((r) => ({ id: r['id'] as string, code: r['code'] as string, unit: r['unit'] as string }));
+  }
+
   /** Reference price of a material in a city at a time (paise per unit), or null. */
   async getMaterialReference(materialId: string, cityId: string, at: Date = this.#d.clock.now()): Promise<{ unitPricePaise: bigint; unit: string } | null> {
     if (!UUID.test(materialId) || !UUID.test(cityId)) return null;

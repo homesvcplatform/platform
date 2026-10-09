@@ -40,3 +40,25 @@ export const release = z.strictObject({ reasonCode: reason, safetyConcern: z.boo
 export const manualAssignment = z.strictObject({ technicianUserId: z.uuid(), reasonCode: reason });
 export const customerConfirmation = z.strictObject({ reasonCode: z.literal('REGISTERED_NUMBER_CALL') });
 export const opsWait = z.strictObject({ reasonCode: reason });
+
+// Gate 6 (04 §10 / §12, ADR-027): diagnosis checkout, repair completion, materials confirmation, repair scheduling and
+// cancellation. No photos or receipts until the files module exists (ADR-027 #2).
+const quantity = z.number().min(0).max(1000);
+
+export const checkout = z.strictObject({});
+export const completeRepair = z.strictObject({
+  completionCode: z.string().regex(/^\d{4}$/),
+  outcome: z.enum(['COMPLETE', 'PARTIAL']),
+  partialReasonCode: reason.optional(),
+  materialUsage: z.array(z.strictObject({ quoteItemId: z.uuid(), qtyUsed: quantity, actualUnitCostPaise: z.int().min(0).max(10_000_000).optional() })).max(50),
+});
+export const materialsConfirmed = z.strictObject({ items: z.array(z.strictObject({ quoteItemId: z.uuid(), have: z.boolean() })).max(50) });
+export const scheduleRepair = z.strictObject({
+  timing: booking.shape.timing,
+  performerPreference: z.enum(['SAME_TECHNICIAN', 'RECOMMENDED_SPECIALIST']).optional(),
+  allowFallback: z.boolean().optional(),
+});
+export const cancelRepair = z.strictObject({
+  reasonCode: z.enum(['CHANGED_MIND', 'FOUND_ANOTHER_SOLUTION', 'TIMING_NOT_SUITABLE', 'TOO_EXPENSIVE', 'OTHER']),
+  acceptedFeePaise: z.int().min(0).max(10_000_000),
+});

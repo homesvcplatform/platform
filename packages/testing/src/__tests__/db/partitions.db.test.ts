@@ -5,7 +5,7 @@ import { createTestDatabase, inRollback, sqlState, type TestDatabase } from '../
 
 const PARTITIONED = [
   'compliance.audit_logs', 'compliance.disclosure_events', 'jobs.job_status_history', 'jobs.repair_order_status_history',
-  'jobs.visit_status_history', 'payments.provider_events',
+  'jobs.visit_status_history', 'payments.provider_events', 'diagnosis.quote_version_status_history',
 ];
 
 let db: TestDatabase;

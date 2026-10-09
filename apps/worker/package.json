@@ -10,10 +10,12 @@
   },
   "dependencies": {
     "@hsp/db": "workspace:*",
+    "@hsp/events": "workspace:*",
     "@hsp/kernel": "workspace:*",
     "@hsp/module-catalog": "workspace:*",
     "@hsp/module-compliance": "workspace:*",
     "@hsp/module-customers": "workspace:*",
+    "@hsp/module-diagnosis": "workspace:*",
     "@hsp/module-geo": "workspace:*",
     "@hsp/module-identity": "workspace:*",
     "@hsp/module-jobs": "workspace:*",

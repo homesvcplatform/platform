@@ -66,6 +66,9 @@ importers:
       '@hsp/module-customers':
         specifier: workspace:*
         version: link:../../packages/modules/customers
+      '@hsp/module-diagnosis':
+        specifier: workspace:*
+        version: link:../../packages/modules/diagnosis
       '@hsp/module-geo':
         specifier: workspace:*
         version: link:../../packages/modules/geo
@@ -106,6 +109,9 @@ importers:
       '@hsp/errors':
         specifier: workspace:*
         version: link:../../packages/errors
+      '@hsp/events':
+        specifier: workspace:*
+        version: link:../../packages/events
       '@hsp/testing':
         specifier: workspace:*
         version: link:../../packages/testing
@@ -129,6 +135,9 @@ importers:
       '@hsp/module-customers':
         specifier: workspace:*
         version: link:../../packages/modules/customers
+      '@hsp/module-diagnosis':
+        specifier: workspace:*
+        version: link:../../packages/modules/diagnosis
       '@hsp/module-geo':
         specifier: workspace:*
         version: link:../../packages/modules/geo
@@ -169,6 +178,9 @@ importers:
       '@hsp/errors':
         specifier: workspace:*
         version: link:../../packages/errors
+      '@hsp/events':
+        specifier: workspace:*
+        version: link:../../packages/events
       '@hsp/testing':
         specifier: workspace:*
         version: link:../../packages/testing
@@ -209,6 +221,9 @@ importers:
       '@hsp/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@hsp/events':
+        specifier: workspace:*
+        version: link:../../packages/events
       '@hsp/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
@@ -221,6 +236,9 @@ importers:
       '@hsp/module-customers':
         specifier: workspace:*
         version: link:../../packages/modules/customers
+      '@hsp/module-diagnosis':
+        specifier: workspace:*
+        version: link:../../packages/modules/diagnosis
       '@hsp/module-geo':
         specifier: workspace:*
         version: link:../../packages/modules/geo
@@ -321,7 +339,24 @@ importers:
 
   packages/errors: {}
 
-  packages/events: {}
+  packages/events:
+    dependencies:
+      '@hsp/db':
+        specifier: workspace:*
+        version: link:../db
+      '@hsp/kernel':
+        specifier: workspace:*
+        version: link:../kernel
+      '@hsp/observability':
+        specifier: workspace:*
+        version: link:../observability
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
+    devDependencies:
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
 
   packages/kernel:
     dependencies:
@@ -444,7 +479,51 @@ importers:
         specifier: 8.23.1
         version: 8.23.1
 
-  packages/modules/diagnosis: {}
+  packages/modules/diagnosis:
+    dependencies:
+      '@hsp/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@hsp/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@hsp/errors':
+        specifier: workspace:*
+        version: link:../../errors
+      '@hsp/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@hsp/module-catalog':
+        specifier: workspace:*
+        version: link:../catalog
+      '@hsp/module-jobs':
+        specifier: workspace:*
+        version: link:../jobs
+      '@hsp/module-pricing':
+        specifier: workspace:*
+        version: link:../pricing
+      '@hsp/money':
+        specifier: workspace:*
+        version: link:../../money
+      '@hsp/observability':
+        specifier: workspace:*
+        version: link:../../observability
+      '@hsp/policy':
+        specifier: workspace:*
+        version: link:../../policy
+      '@hsp/security':
+        specifier: workspace:*
+        version: link:../../security
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
 
   packages/modules/files: {}
 
@@ -530,6 +609,9 @@ importers:
       '@hsp/errors':
         specifier: workspace:*
         version: link:../../errors
+      '@hsp/events':
+        specifier: workspace:*
+        version: link:../../events
       '@hsp/kernel':
         specifier: workspace:*
         version: link:../../kernel
@@ -539,6 +621,9 @@ importers:
       '@hsp/module-pricing':
         specifier: workspace:*
         version: link:../pricing
+      '@hsp/money':
+        specifier: workspace:*
+        version: link:../../money
       '@hsp/observability':
         specifier: workspace:*
         version: link:../../observability
@@ -568,6 +653,9 @@ importers:
       '@hsp/kernel':
         specifier: workspace:*
         version: link:../../kernel
+      '@hsp/money':
+        specifier: workspace:*
+        version: link:../../money
       pg:
         specifier: 8.23.0
         version: 8.23.0

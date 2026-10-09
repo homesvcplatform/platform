@@ -6,6 +6,7 @@ import pg from 'pg';
 import { createEphemeralKeyring, createLocalTokenSigningKey, type LocalKeyring } from '@hsp/adapter-kms-local';
 import { createFakeSms, type FakeSms } from '@hsp/adapter-sms-fake';
 import { ManualClock } from '@hsp/kernel';
+import type { DiagnosisPolicy } from '@hsp/module-diagnosis';
 import type { IdentityKeys } from '@hsp/module-identity';
 import { createLogger } from '@hsp/observability';
 import { MemoryRateLimitStore, type RateLimitStore } from '@hsp/security';
@@ -30,10 +31,14 @@ export interface ApiHarness {
   role(role: 'app_api' | 'app_voice' | 'app_worker', kmsRole: string): Promise<ApiComposition>;
   /** Technicians eligible for the technician app (stands in for the workforce module). */
   readonly technicians: Set<string>;
+  /** Gate 6: signed quote links "delivered" to customers (fake comms): quote version id → token. */
+  readonly quoteLinks: Map<string, string>;
+  /** Gate 6: call sessions the fake telephony evidences (ops-desk bridged calls, recorded customer calls). */
+  readonly calls: Set<string>;
   close(): Promise<void>;
 }
 
-export async function createApiHarness(opts: { rateLimitStore?: RateLimitStore; botTokens?: string[] } = {}): Promise<ApiHarness> {
+export async function createApiHarness(opts: { rateLimitStore?: RateLimitStore; botTokens?: string[]; diagnosisPolicy?: DiagnosisPolicy } = {}): Promise<ApiHarness> {
   const db = await createTestDatabase();
   const clock = new ManualClock(new Date());
   const sms = createFakeSms(TEST_ENV);
@@ -47,6 +52,8 @@ export async function createApiHarness(opts: { rateLimitStore?: RateLimitStore; 
   const bot = new Set(opts.botTokens ?? []);
   const rateLimitStore = opts.rateLimitStore ?? new MemoryRateLimitStore();
   const jobsCodeKey = randomBytes(32);
+  const quoteLinks = new Map<string, string>();
+  const calls = new Set<string>();
 
   const build = async (dbRole: 'app_api' | 'app_voice' | 'app_worker', kmsRole: string) => {
     const pool = new pg.Pool({ connectionString: await db.loginFor(dbRole), max: 5 });
@@ -55,11 +62,14 @@ export async function createApiHarness(opts: { rateLimitStore?: RateLimitStore; 
       pool, clock, logger, kms: keyring.forRole(kmsRole), tokenSigner: signing.signer, tokenVerificationKeys: signing.publicKeys, issuer: ISSUER,
       keys, otpSender: sms.sender, eligibility: { isEligible: async (userId, surface) => surface === 'CUSTOMER_WEB' || technicians.has(userId) },
       botVerifier: { verify: async (t) => bot.has(t) }, phonePolicy: 'RESERVED_TEST_RANGE_ONLY', allowedWebOrigins: [ORIGIN], rateLimitStore, appEnv: 'test', jobsCodeKey,
+      quoteLinkSender: { deliver: async (l) => { quoteLinks.set(l.quoteVersionId, l.token); } },
+      callEvidence: { bridgedCall: async (id) => calls.has(id), recordedCustomerCall: async (id) => calls.has(id) },
+      ...(opts.diagnosisPolicy ? { diagnosisPolicy: opts.diagnosisPolicy } : {}),
     });
   };
   const api = await build('app_api', 'api');
   return {
-    db, clock, sms, logs, keyring, keys, api, technicians,
+    db, clock, sms, logs, keyring, keys, api, technicians, quoteLinks, calls,
     role: (role, kmsRole) => build(role, kmsRole),
     async close() {
       for (const p of pools) await p.end();

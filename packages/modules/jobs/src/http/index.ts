@@ -1,4 +1,4 @@
-// HTTP surface of module "jobs" (Phase 1 04 §7, §10; Gate 5 subset). Framework-neutral handlers (ADR-024 #1): the app
+// HTTP surface of module "jobs" (Phase 1 04 §7, §10, §12; Gate 5 and Gate 6 subsets). Framework-neutral handlers (ADR-024 #1): the app
 // resolves the actor (customer / technician session via identity, admin via backoffice) and passes it in through
 // `authenticate`. No CORS headers are ever produced.
 import { jobs as contracts } from '@hsp/contracts';
@@ -32,6 +32,14 @@ export const jobsEndpoints: readonly EndpointSpec[] = [
   { method: 'POST', path: '/v1/technician/visits/:visitId/arrive', surface: 'technician', action: 'jobs.visit.act', idempotency: 'required', rateClass: 'CODE_ENTRY' },
   { method: 'POST', path: '/v1/technician/visits/:visitId/wait/start', surface: 'technician', action: 'jobs.visit.act', idempotency: 'required', rateClass: 'WRITE' },
   { method: 'POST', path: '/v1/technician/visits/:visitId/release', surface: 'technician', action: 'jobs.visit.act', idempotency: 'required', rateClass: 'WRITE' },
+  // Gate 6 (ADR-027)
+  { method: 'POST', path: '/v1/technician/visits/:visitId/checkout', surface: 'technician', action: 'jobs.visit.act', idempotency: 'required', rateClass: 'WRITE' },
+  { method: 'POST', path: '/v1/technician/visits/:visitId/complete', surface: 'technician', action: 'jobs.visit.act', idempotency: 'required', rateClass: 'CODE_ENTRY' },
+  { method: 'POST', path: '/v1/technician/visits/:visitId/materials-confirmed', surface: 'technician', action: 'jobs.visit.act', idempotency: 'required', rateClass: 'WRITE' },
+  { method: 'POST', path: '/v1/customer/visits/:visitId/completion-code', surface: 'customer', action: 'jobs.visit.completion_code', idempotency: { none: 'issues a fresh code; the previous one stops working' }, rateClass: 'WRITE' },
+  { method: 'GET', path: '/v1/customer/repair-orders/:repairOrderId', surface: 'customer', action: 'jobs.repair_order.read', idempotency: 'implicit', rateClass: 'READ' },
+  { method: 'POST', path: '/v1/customer/repair-orders/:repairOrderId/schedule', surface: 'customer', action: 'jobs.repair_order.schedule', idempotency: 'required', rateClass: 'CRITICAL' },
+  { method: 'POST', path: '/v1/customer/repair-orders/:repairOrderId/cancel', surface: 'customer', action: 'jobs.repair_order.cancel', idempotency: 'required', rateClass: 'CRITICAL' },
 ];
 
 export const jobsAdminEndpoints: readonly EndpointSpec[] = [
@@ -121,6 +129,20 @@ export function createJobsHttp(service: JobsService, authenticate: (req: JobsHtt
       json(200, await service.startWait(actor, p(params, 'visitId'), parse(contracts.waitStart, req.body), idempotencyKey(req), req.meta)),
     'POST /v1/technician/visits/:visitId/release': async (req, params, actor) =>
       json(200, await service.release(actor, p(params, 'visitId'), parse(contracts.release, req.body), idempotencyKey(req), req.meta)),
+    'POST /v1/technician/visits/:visitId/checkout': async (req, params, actor) => {
+      parse(contracts.checkout, req.body ?? {});
+      return json(200, await service.checkoutDiagnosisVisit(actor, p(params, 'visitId'), idempotencyKey(req), req.meta));
+    },
+    'POST /v1/technician/visits/:visitId/complete': async (req, params, actor) =>
+      json(200, await service.completeRepairVisit(actor, p(params, 'visitId'), parse(contracts.completeRepair, req.body), idempotencyKey(req), req.meta)),
+    'POST /v1/technician/visits/:visitId/materials-confirmed': async (req, params, actor) =>
+      json(200, await service.confirmMaterials(actor, p(params, 'visitId'), parse(contracts.materialsConfirmed, req.body), idempotencyKey(req), req.meta)),
+    'POST /v1/customer/visits/:visitId/completion-code': async (req, params, actor) => json(200, await service.issueCompletionCode(actor, p(params, 'visitId'), req.meta)),
+    'GET /v1/customer/repair-orders/:repairOrderId': async (_req, params, actor) => json(200, await service.getRepairOrder(actor, p(params, 'repairOrderId'))),
+    'POST /v1/customer/repair-orders/:repairOrderId/schedule': async (req, params, actor) =>
+      json(200, await service.scheduleRepair(actor, p(params, 'repairOrderId'), parse(contracts.scheduleRepair, req.body), idempotencyKey(req), req.meta)),
+    'POST /v1/customer/repair-orders/:repairOrderId/cancel': async (req, params, actor) =>
+      json(200, await service.cancelRepairOrder(actor, p(params, 'repairOrderId'), parse(contracts.cancelRepair, req.body), idempotencyKey(req), req.meta)),
   }, authenticate);
 }
 

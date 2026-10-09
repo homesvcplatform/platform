@@ -382,3 +382,63 @@ describe('price snapshots are immutable (INV-21)', () => {
       expect(await sqlState(c(), 'DELETE FROM pricing.price_snapshots WHERE id = $1', [snap])).toBe('HS001');
     }));
 });
+
+// ---------------------------------------------------------------- Gate 6 (ADR-027)
+
+describe('Gate 6: quote-version state machine (D11) and history (INV-18)', () => {
+  it('PRESENTED → SUPERSEDED is refused (only an APPROVED version is superseded); PRESENTED → WITHDRAWN is allowed', () =>
+    inRollback(c(), async () => {
+      const quoteId = await quote(c());
+      const v1 = await draftVersion(c(), quoteId, 1, [{ type: 'LABOUR', amount: 100 }]);
+      await present(c(), v1.versionId);
+      expect(await sqlState(c(), "UPDATE diagnosis.quote_versions SET status = 'SUPERSEDED' WHERE id = $1", [v1.versionId])).toBe('HS003');
+      expect(await sqlState(c(), "UPDATE diagnosis.quote_versions SET status = 'WITHDRAWN' WHERE id = $1", [v1.versionId])).toBe('OK');
+      expect(await sqlState(c(), "UPDATE diagnosis.quote_versions SET status = 'PRESENTED' WHERE id = $1", [v1.versionId])).toBe('HS003');
+    }));
+
+  it('every version status change writes a history row from the actor context, and fails without one (HS031)', () =>
+    inRollback(c(), async () => {
+      const v = await draftVersion(c(), await quote(c()), 1, [{ type: 'LABOUR', amount: 100 }]);
+      await present(c(), v.versionId);
+      const h = await c().query('SELECT from_status, to_status, actor_type, channel FROM diagnosis.quote_version_status_history WHERE quote_version_id = $1 ORDER BY created_at, to_status',
+        [v.versionId]);
+      expect(h.rows.map((x) => `${x.from_status ?? 'new'}→${x.to_status}`).sort()).toEqual(['DRAFT→PRESENTED', 'new→DRAFT']);
+      expect(h.rows[0]).toMatchObject({ actor_type: 'SYSTEM', channel: 'TEST' });
+      await c().query("SELECT set_config('hsp.actor_type', '', true), set_config('hsp.channel', '', true), set_config('hsp.correlation_id', '', true)");
+      expect(await sqlState(c(), "UPDATE diagnosis.quote_versions SET status = 'EXPIRED' WHERE id = $1", [v.versionId])).toBe('HS031');
+      expect(await sqlState(c(), 'UPDATE diagnosis.quote_version_status_history SET channel = $2 WHERE quote_version_id = $1', [v.versionId, 'X'])).toBe('HS001');
+    }));
+});
+
+describe('Gate 6: configuration and relay plumbing', () => {
+  it('VISIT_FEE_CREDIT is a fee type (ADR-027 #4); unknown types are still refused', () =>
+    inRollback(c(), async () => {
+      const card = newId();
+      await c().query("INSERT INTO pricing.rate_cards (id, city_id, version_no, label, status, created_by_admin_id) VALUES ($1, $2, 1, 'TEST', 'DRAFT', $3)", [card, newId(), newId()]);
+      expect(await sqlState(c(), "INSERT INTO pricing.fee_rules (id, rate_card_id, fee_type, params) VALUES ($1, $2, 'VISIT_FEE_CREDIT', '{\"credit_bps\":5000}')", [newId(), card])).toBe('OK');
+      expect(await sqlState(c(), "INSERT INTO pricing.fee_rules (id, rate_card_id, fee_type, params) VALUES ($1, $2, 'SURGE', '{}')", [newId(), card])).toBe('23514');
+    }));
+
+  it('catalog problems are unique per service type (ADR-027 #1)', () =>
+    inRollback(c(), async () => {
+      const cat = newId();
+      const type = newId();
+      await c().query("INSERT INTO catalog.service_categories (id, code, names, status) VALUES ($1, 'TESTCAT', '{}', 'ACTIVE')", [cat]);
+      await c().query("INSERT INTO catalog.service_types (id, category_id, code, names, status) VALUES ($1, $2, 'TESTTYPE', '{}', 'ACTIVE')", [type, cat]);
+      const insert = "INSERT INTO catalog.problems (id, service_type_id, code, names, status) VALUES ($1, $2, $3, '{}', 'ACTIVE')";
+      expect(await sqlState(c(), insert, [newId(), type, 'GAS_LEAK'])).toBe('OK');
+      expect(await sqlState(c(), insert, [newId(), type, 'GAS_LEAK'])).toBe('23505');
+      expect(await sqlState(c(), insert, [newId(), type, 'gas leak'])).toBe('23514');
+    }));
+
+  it('an outbox insert wakes the relay: one coalesced dispatch job (ADR-027 #14)', () =>
+    inRollback(c(), async () => {
+      const insert = `INSERT INTO platform.outbox (id, event_type, schema_version, aggregate_type, aggregate_id, aggregate_version, payload, correlation_id)
+                      VALUES ($1, 'TestEvent', 1, 'Test', $2, 0, '{}', $3)`;
+      await c().query(insert, [newId(), newId(), newId()]);
+      await c().query(insert, [newId(), newId(), newId()]);
+      const jobs = await c().query(`SELECT t.identifier AS task_identifier FROM graphile_worker._private_jobs j
+                                      JOIN graphile_worker._private_tasks t ON t.id = j.task_id WHERE j.key = 'platform:outbox:dispatch'`);
+      expect(jobs.rows).toEqual([{ task_identifier: 'platform.outbox.dispatch' }]);
+    }));
+});

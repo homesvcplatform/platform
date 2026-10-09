@@ -1,5 +1,6 @@
 // Gate 5: jobs policies (customer owner / technician assignee / admin city scope), SQL ownership (B2) and the TCP-3
-// coupling point the service joins (B4) against modules.json.
+// coupling point the service joins (B4) against modules.json. Gate 6: the repair-order / completion-code policies and
+// TCP-2 (material usage at repair completion).
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { assertModuleOwnsSql, ownershipFromModulesJson, UnitOfWork } from '@hsp/db';
@@ -20,7 +21,8 @@ describe('jobs policies', () => {
     expect(r.can(customer, 'jobs.job.create', {}, ctx).allow).toBe(true);
     expect(r.can({ ...customer, surface: 'TECHNICIAN_APP' }, 'jobs.job.create', {}, ctx).allow).toBe(false);
     expect(r.can(technician, 'jobs.job.create', {}, ctx).allow).toBe(false);
-    for (const action of ['jobs.job.read', 'jobs.job.cancel', 'jobs.visit.start_code']) {
+    for (const action of ['jobs.job.read', 'jobs.job.cancel', 'jobs.visit.start_code', 'jobs.visit.completion_code', 'jobs.repair_order.read',
+      'jobs.repair_order.schedule', 'jobs.repair_order.cancel']) {
       expect(r.can(customer, action, { ownerUserId: 'c1' }, ctx).allow).toBe(true);
       expect(r.can(customer, action, { ownerUserId: 'c2' }, ctx)).toMatchObject({ allow: false, status: 404 });
       expect(r.can(customer, action, { ownerUserId: null }, ctx)).toMatchObject({ allow: false, status: 404 });
@@ -52,10 +54,12 @@ describe('architecture', () => {
     for (const [name, sql] of Object.entries(JOBS_SQL)) expect(() => assertModuleOwnsSql('jobs', sql, ownership), name).not.toThrow();
   });
 
-  it('B4: TCP-3 (jobs → payments.issueBill) is an approved coupling point; anything else is refused', () => {
+  it('B4: TCP-2 (jobs → diagnosis.recordMaterialUsage) and TCP-3 (jobs → payments.issueBill) are approved coupling points; anything else is refused', () => {
     const uow = new UnitOfWork('jobs', spec.transactionalCouplingPoints);
     expect(() => uow.join('jobs', 'payments', 'issueBill')).not.toThrow();
+    expect(() => uow.join('jobs', 'diagnosis', 'recordMaterialUsage')).not.toThrow();
     expect(() => uow.join('jobs', 'pricing', 'snapshot')).toThrow();
+    expect(() => uow.join('jobs', 'diagnosis', 'versionFacts')).toThrow();
   });
 
   it('timer task names fit the platform.schedule_timer pattern', () => {

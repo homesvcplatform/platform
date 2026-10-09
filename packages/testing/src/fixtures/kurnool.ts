@@ -126,6 +126,28 @@ export const SYMPTOMS: { serviceType: string; code: string; en: string; te: stri
   { serviceType: 'AC', code: 'NOT_COOLING', en: 'Not cooling', te: 'చల్లబడటం లేదు' },
 ];
 
+/** Gate 6 (ADR-027 #1): the problem taxonomy a diagnosis names, per service type (what the technician found). */
+export const PROBLEMS: { serviceType: string; code: string; en: string }[] = [
+  { serviceType: 'PLUMBING_GENERAL', code: 'TRAP_LEAK', en: 'Leaking sink trap' },
+  { serviceType: 'PLUMBING_GENERAL', code: 'JOINT_LEAK', en: 'Leaking pipe joint' },
+  { serviceType: 'PLUMBING_GENERAL', code: 'NO_FAULT_FOUND', en: 'No fault found' },
+  { serviceType: 'ELECTRICAL_GENERAL', code: 'MCB_FAULT', en: 'Faulty MCB' },
+  { serviceType: 'ELECTRICAL_GENERAL', code: 'SWITCH_FAULT', en: 'Faulty switch' },
+  { serviceType: 'ELECTRICAL_GENERAL', code: 'NO_FAULT_FOUND', en: 'No fault found' },
+  { serviceType: 'REFRIGERATOR', code: 'THERMOSTAT_FAULT', en: 'Thermostat fault' },
+  { serviceType: 'REFRIGERATOR', code: 'REFRIGERANT_LEAK', en: 'Refrigerant leak' },
+  { serviceType: 'REFRIGERATOR', code: 'COMPRESSOR_FAILURE', en: 'Compressor failure' },
+  { serviceType: 'REFRIGERATOR', code: 'NO_FAULT_FOUND', en: 'No fault found' },
+  { serviceType: 'RO_WATER_PURIFIER', code: 'FILTER_CLOGGED', en: 'Clogged filters' },
+  { serviceType: 'RO_WATER_PURIFIER', code: 'MEMBRANE_FAULT', en: 'Membrane fault' },
+  { serviceType: 'WASHING_MACHINE', code: 'DRAIN_PUMP_FAULT', en: 'Drain pump fault' },
+  { serviceType: 'GEYSER', code: 'HEATING_ELEMENT_FAILURE', en: 'Heating element failure' },
+  { serviceType: 'AIR_COOLER', code: 'PUMP_FAILURE', en: 'Pump failure' },
+  { serviceType: 'AC', code: 'CAPACITOR_FAILURE', en: 'Capacitor failure' },
+  { serviceType: 'AC', code: 'WIRING_DAMAGE', en: 'Indoor wiring damage' },
+  { serviceType: 'AC', code: 'NO_FAULT_FOUND', en: 'No fault found' },
+];
+
 /** Keypad codes are service-type-specific (ADR-020): 21 under REFRIGERATOR is not 21 under RO_WATER_PURIFIER. */
 export const REPAIR_ITEMS: { code: string; serviceType: string; keypad: string; specialization: string | null; en: string }[] = [
   { code: 'REP-PLB-TRAP-REPLACE', serviceType: 'PLUMBING_GENERAL', keypad: '11', specialization: 'LEAKAGE', en: 'Replace sink trap' },
@@ -154,10 +176,15 @@ export const MATERIALS: { code: string; unit: 'PIECE' | 'METRE' | 'LITRE' | 'KG'
   { code: 'MAT-AC-CAPACITOR', unit: 'PIECE', en: 'AC capacitor', testPricePaise: 45000 },
 ];
 
-/** Two fixture rate cards: Model B (ACTIVE) and Model C (DRAFT). TEST VALUES ONLY, NOT FINAL. */
+/**
+ * Two fixture rate cards: Model B (ACTIVE) and Model C (DRAFT), Phase 1.1 06 §1.3. TEST VALUES ONLY, NOT FINAL. Gate 6
+ * (ADR-027 #4): Model B has no visit-fee credit and no platform fee; Model C credits 50 % and adds a flat platform fee.
+ */
 export const RATE_CARDS = [
-  { label: 'MODEL_B_FIXTURE_NOT_FINAL', versionNo: 1, status: 'ACTIVE', visitFeePaise: 19900, labourBasePaise: 30000, shareBps: 7500 },
-  { label: 'MODEL_C_FIXTURE_NOT_FINAL', versionNo: 2, status: 'DRAFT', visitFeePaise: 14900, labourBasePaise: 35000, shareBps: 8000 },
+  { label: 'MODEL_B_FIXTURE_NOT_FINAL', versionNo: 1, status: 'ACTIVE', visitFeePaise: 19900, labourBasePaise: 30000, shareBps: 7500,
+    visitFeeCreditBps: 0, platformFeePaise: 0, diagnosisPayoutPaise: 7000 },
+  { label: 'MODEL_C_FIXTURE_NOT_FINAL', versionNo: 2, status: 'DRAFT', visitFeePaise: 14900, labourBasePaise: 35000, shareBps: 8000,
+    visitFeeCreditBps: 5000, platformFeePaise: 2900, diagnosisPayoutPaise: 10000 },
 ].map((c) => ({ ...c, id: id('pricing.rate_cards', c.label) }));
 
 export interface TechnicianFixture {

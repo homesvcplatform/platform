@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@hsp/kernel": "workspace:*",
+    "@hsp/money": "workspace:*",
     "pg": "8.23.0",
     "zod": "4.6.5"
   },

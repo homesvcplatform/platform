@@ -95,6 +95,7 @@ export async function draftVersion(
     ...totalsOverride,
   };
   const total = (totals.items_total_paise ?? 0) - (totals.discount_paise ?? 0) - (totals.visit_fee_credit_paise ?? 0) + (totals.tax_paise ?? 0);
+  await actorContext(c); // Gate 6 (migration 0037): quote-version status changes write their history from the actor context
   const versionId = newId();
   const contentHash = hash32();
   await c.query(
