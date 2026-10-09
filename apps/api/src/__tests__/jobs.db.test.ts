@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { newId } from '@hsp/kernel';
 import { arrivalOverrideChangeAction } from '@hsp/module-jobs';
 import { subjectKeyStore } from '@hsp/module-identity';
-import type { Actor } from '@hsp/policy';
+import { AUTHZ_MATRIX, cellAllows, MATRIX_COLUMNS, type Actor, type MatrixColumn } from '@hsp/policy';
 import { blindIndex, createFieldCrypto } from '@hsp/security';
 import { kurnool, loadSyntheticSeed } from '@hsp/testing';
 import { createApiHarness, meta, ORIGIN, testPhone, type ApiHarness } from './harness.ts';
@@ -236,6 +236,39 @@ describe('manual assignment (06 §4, INV-01, INV-03)', () => {
     await expect(h.api.jobs.assignManually(otherCity, visitId, { technicianUserId: newId(), reasonCode: 'TEST' }, randomUUID(), meta())).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(h.api.jobs.assignManually(ops, visitId, { technicianUserId: newId(), reasonCode: 'TEST' }, randomUUID(), meta()))
       .rejects.toMatchObject({ fields: [{ path: 'technicianUserId', code: 'NOT_ASSIGNABLE' }] });
+  });
+});
+
+describe('authorization matrix row "Manual assignment" (05 §11: DISP S, CM S) against the seeded roles (ADR-026 #13)', () => {
+  const ROLE_FOR: Partial<Record<MatrixColumn, string>> = {
+    'SUP-L1': 'SUPPORT_L1', 'SUP-L2': 'SUPPORT_L2', DISP: 'DISPATCH', VER: 'VERIFICATION_OFFICER', SAF: 'SAFETY_OFFICER', FIN: 'FINANCE',
+    CM: 'CITY_MANAGER', PRC: 'PRICING_ADMIN', AUD: 'AUDITOR', SEC: 'SECURITY_ADMIN',
+  };
+  const actorFor = async (column: MatrixColumn, cityIds: string[]): Promise<Actor> => {
+    const role = ROLE_FOR[column];
+    if (!role) return { kind: column === 'CUS' ? 'CUSTOMER' : column === 'AGT' ? 'FIELD_AGENT' : 'TECHNICIAN', id: newId(), sessionId: newId() };
+    const perms = (await h.db.migrator.query('SELECT permission FROM backoffice.role_permissions WHERE role_code = $1', [role])).rows.map((r) => r.permission as string);
+    return { kind: 'ADMIN', id: newId(), sessionId: newId(), surface: 'ADMIN', permissions: new Map(perms.map((p) => [p, [{ kind: 'CITIES' as const, cityIds }]])) };
+  };
+
+  it('every column: allowed in its own city exactly when the cell allows; never in another city', async () => {
+    const row = AUTHZ_MATRIX.find((r) => r.capability === 'Manual assignment');
+    for (const column of MATRIX_COLUMNS) {
+      if (column === 'SUPER (BG)') continue; // break-glass (05 §9) is not built
+      const actor = await actorFor(column, [CITY.id]);
+      const can = (cityId: string) => h.api.policies.can(actor, 'jobs.visit.assign_manual', { cityId }, { now: h.clock.now() }).allow;
+      expect(can(CITY.id), `${column} in its city`).toBe(cellAllows(row?.cells[column] ?? '❌'));
+      expect(can(newId()), `${column} in another city`).toBe(false);
+    }
+  });
+
+  it('a city manager built from the seeded role assigns a visit end to end', async () => {
+    const c = await customer();
+    const t = await technician();
+    const { visitId } = await book(c, bookingBody(await address(c.userId)));
+    const cm = await actorFor('CM', [CITY.id]);
+    await expect(h.api.jobs.assignManually(cm, visitId, { technicianUserId: t.userId, reasonCode: 'ESCALATION_ASSIGN' }, randomUUID(), meta()))
+      .resolves.toMatchObject({ visitStatus: 'ASSIGNED' });
   });
 });
 

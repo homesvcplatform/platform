@@ -17,7 +17,7 @@
 | TCP-3 seam | `BillIssuer` port called inside the jobs transaction through `UnitOfWork` (B4) for a cancellation with a fee and a customer no-show; deterministic placeholder in `payments` (ADR-026 #10), replaced at Gate 11 |
 | Founder decisions | Minimal read-only pricing interface (visit fee + snapshot, lifecycle fees; fixture rate cards, NOT FINAL); read-only address interface (`customers`); Graphile Worker; fast-check |
 
-Also: manual ops assignment (`dispatch.assign`, city-scoped, reason, INV-01, INV-03 capacity), technician depart / arrive / wait / release, ops-assisted booking (unverified customer) and ops confirmation by call (G-4), customer job view and start-code re-issue.
+Also: manual ops assignment (`dispatch.assign`, city-scoped, reason, INV-01, INV-03 capacity; DISPATCH and CITY_MANAGER per the §11 matrix, ADR-026 #13 / migration 0034), technician depart / arrive / wait / release, ops-assisted booking (unverified customer) and ops confirmation by call (G-4), customer job view and start-code re-issue.
 
 **Not in Gate 5** (their gates): diagnosis, quotes, repair orders created from approvals, repair completion and the completion-code / ops completion override commands, TCP-2 material usage (Gate 6); offers and the TCP-1 facade called by matching (Gate 7); UI (Gates 8 / 9); IVR and masked-call wait evidence (Gate 10); real bills, payments, ledger (Gate 11). Reschedule, ops cancellation and safety abort are not part of the Gate 5 deliverables and are not built.
 
@@ -55,13 +55,12 @@ Also: manual ops assignment (`dispatch.assign`, city-scoped, reason, INV-01, INV
 - **Disclosure:** the exact address is decrypted only in the L2 path (customers module, SR-06; the ESLint field-crypto allowlist gains `customers`), after the disclosure event is written; never logged.
 - **Ops overrides** use the Gate 4 change-request path with the bound passkey step-up, so they are disabled outside local / CI until the independent WebAuthn review (Gate 3 condition).
 - **Queue isolation:** only `app_worker` can touch `graphile_worker`; other roles schedule through two SECURITY DEFINER functions with validated task names and keys.
-- **Supply chain:** two new dependencies (founder-approved); one documented transitive types-only pin keeps the `no-downgrade` trust policy intact (ADR-026 #3).
+- **Supply chain:** two new dependencies (founder-approved). graphile-config's `@types/node` range can only resolve to `undici-types` 6.21.0, which the `no-downgrade` trust policy refuses; a types-only override scoped to `graphile-config@0.0.1-beta.18` uses the repository's own trusted Node 24 types instead (ADR-026 #3). No policy changed, no check bypassed; a regression test pins the settings, the two overrides and the resolved versions.
 
 ## 4. Tech debt register delta
 | Item | Due |
 |---|---|
 | Lifecycle policy values in the config module (fixture defaults now, NOT FINAL) | Config module |
-| Matrix "Manual assignment" lists CM S, but the seeded CITY_MANAGER role has no `dispatch.assign` (not invented here) | Founder decision when ops roles are reviewed |
 | TCP-1 facade for matching (the internal assignment path exists) | Gate 7 |
 | Repair completion command, completion code issue / verification, ops completion override, TCP-2 | Gate 6 |
 | Masked-call wait evidence; `visit_code` uniqueness among a technician's active visits (IVR selection aid) | Gate 10 |

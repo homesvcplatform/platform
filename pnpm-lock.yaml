@@ -6,7 +6,7 @@ settings:
 
 overrides:
   rolldown: 1.2.11
-  graphile-config>@types/node: 24.13.6
+  graphile-config@0.0.1-beta.18>@types/node: 24.13.6
 
 importers:
 
