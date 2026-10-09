@@ -24,6 +24,16 @@ export async function installTimerQueue(migratorConnectionString: string): Promi
     await c.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ${TIMER_SCHEMA} TO ${WORKER_ROLE}`);
     await c.query(`GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA ${TIMER_SCHEMA} TO ${WORKER_ROLE}`);
     await c.query(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA ${TIMER_SCHEMA} TO ${WORKER_ROLE}`);
+    // Graphile enables row-level security on its private tables (owner-only access). The worker role gets an explicit
+    // all-rows policy on each of them; no other runtime role gets any access to the queue.
+    await c.query(`DO $$ DECLARE r record; BEGIN
+      FOR r IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = '${TIMER_SCHEMA}' AND c.relkind IN ('r', 'p') AND c.relrowsecurity LOOP
+        IF NOT EXISTS (SELECT 1 FROM pg_policies p WHERE p.schemaname = '${TIMER_SCHEMA}' AND p.tablename = r.relname AND p.policyname = 'hsp_worker_all') THEN
+          EXECUTE format('CREATE POLICY hsp_worker_all ON ${TIMER_SCHEMA}.%I TO ${WORKER_ROLE} USING (true) WITH CHECK (true)', r.relname);
+        END IF;
+      END LOOP;
+    END $$`);
   } finally {
     await c.end();
   }

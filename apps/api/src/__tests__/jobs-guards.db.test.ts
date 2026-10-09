@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import fc from 'fast-check';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { newId } from '@hsp/kernel';
-import { allowedTransitions, MACHINES, statesOf, type Machine } from '@hsp/module-jobs';
+import { allowedTransitions, MACHINES, newPublicRef, statesOf, type Machine } from '@hsp/module-jobs';
 import { createTestDatabase, inRollback, sqlState, type TestDatabase } from '@hsp/testing';
 
 let db: TestDatabase;
@@ -28,8 +28,8 @@ async function job(status = 'REQUESTED'): Promise<string> {
   await c().query(`INSERT INTO jobs.jobs (id, public_ref, customer_user_id, city_id, zone_id, locality_id, service_type_id, address_id,
       address_snapshot_enc, channel, payment_preference, onsite_adult, created_by_actor_type, created_by_actor_id, customer_verified,
       client_request_id, status, visit_fee_snapshot_id)
-    VALUES ($1, 'J-0000000', $2, $3, $3, $3, $3, $3, $4, 'PWA', 'EITHER', 'SELF', 'CUSTOMER', $2, true, $5, $6, $3)`,
-  [id, newId(), newId(), randomBytes(16), newId(), status]);
+    VALUES ($1, $7, $2, $3, $3, $3, $3, $3, $4, 'PWA', 'EITHER', 'SELF', 'CUSTOMER', $2, true, $5, $6, $3)`,
+  [id, newId(), newId(), randomBytes(16), newId(), status, newPublicRef()]);
   return id;
 }
 
