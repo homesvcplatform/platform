@@ -4,3 +4,4 @@
 export * as auth from './auth.ts';
 export * as admin from './admin.ts';
 export * as geo from './geo.ts';
+export * as catalog from './catalog.ts';

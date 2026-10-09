@@ -265,7 +265,42 @@ importers:
 
   packages/modules/benefits: {}
 
-  packages/modules/catalog: {}
+  packages/modules/catalog:
+    dependencies:
+      '@hsp/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@hsp/errors':
+        specifier: workspace:*
+        version: link:../../errors
+      '@hsp/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
+      '@hsp/localization':
+        specifier: workspace:*
+        version: link:../../localization
+      '@hsp/observability':
+        specifier: workspace:*
+        version: link:../../observability
+      '@hsp/policy':
+        specifier: workspace:*
+        version: link:../../policy
+      '@hsp/security':
+        specifier: workspace:*
+        version: link:../../security
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@hsp/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
 
   packages/modules/comms: {}
 
