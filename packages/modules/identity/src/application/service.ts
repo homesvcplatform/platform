@@ -412,7 +412,7 @@ export class IdentityService {
       lastSeenAt: (r['last_seen_at'] as Date).toISOString(), current: r['id'] === actor.sessionId }));
   }
 
-  /** Own sessions (CUS / TEC-APP / AGT), or a user's sessions for admins with `security.sessions.revoke` + reason. */
+  /** Own sessions (CUS / TEC-APP / AGT), or a user's sessions for admins with a GLOBAL `security.sessions.revoke` + reason. */
   async revokeSession(actor: Actor, sessionId: string, meta: RequestMeta, reasonCode?: string): Promise<void> {
     await withTransaction(this.#d.pool, async (c) => {
       const owner = (await c.query(SQL.sessionOwner, [sessionId])).rows[0] as Row | undefined;

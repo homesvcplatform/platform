@@ -269,7 +269,9 @@ Legend: ✅ allowed · **O** own/relationship-scoped only · **S** city/zone-sco
 | Edit matching config | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | M | ❌ | ❌ | ❌ | C | ❌ | ❌ | ❌ | ❌ |
 | Read audit logs | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | S (own city ops) | ❌ | ✅ | ✅ | ✅ |
 | Grant roles | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | M / C (not own) | ✅ |
-| Revoke sessions | own | own | ❌ | own | ❌ | user (reason) | ❌ | ❌ | user | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| Revoke sessions | own | own | ❌ | own | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
 | Export data (bulk) | own DSR | own DSR | via agent | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | M (pseudonymised) | C | ❌ | ✅ (audit only) | ❌ | ✅ |
+
+**Revoke sessions (founder decision 2026-10-09, ADR-024 R12):** only the security admin (and break-glass) may revoke another user's sessions. This row previously gave SUP-L2 "user (reason)" and SAF "user". It was narrowed deliberately for Gate 3 because users carry no city or region, so a city- or region-scoped revocation couldn't be enforced. Broader scoped revocation can be revisited once the product defines city / region semantics for users.
 
 Every cell becomes an automated test case ([13 §4](13-testing-strategy.md#4-authorization-matrix-tests)): allowed cells must succeed with in-scope objects, and every ❌ (and every out-of-scope object for O/S cells) must return 403/404.

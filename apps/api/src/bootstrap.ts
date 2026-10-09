@@ -1,6 +1,6 @@
 // Composition of the `api` process role (Gate 3): wiring only (B6). Builds the policy registry (default deny), checks
 // that every declared endpoint has a registered policy and an idempotency declaration (B11 / B12), and wires the
-// identity module to its ports. The HTTP framework adapter (ADR-014 NestJS) is attached in a later gate; until then
+// identity module to its ports. The HTTP framework adapter (ADR-024 #1: decorator-free) is attached in a later gate; until then
 // `http` is the framework-neutral handler used by the tests.
 import type { KeyObject } from 'node:crypto';
 import type pg from 'pg';

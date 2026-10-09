@@ -684,7 +684,12 @@ describe('Idempotency-Key on POST /admin/v1/grants (04 §1.3)', () => {
   });
 });
 
-describe('admin actions on user sessions (matrix "Revoke sessions": SUP-L2 user (reason), SAF user, SEC ✅)', () => {
+describe('admin actions on user sessions (matrix "Revoke sessions": SEC ✅ only, ADR-024 R12)', () => {
+  it('only SECURITY_ADMIN holds security.sessions.revoke', async () => {
+    const holders = (await db.admin.query("SELECT role_code FROM backoffice.role_permissions WHERE permission = 'security.sessions.revoke'")).rows;
+    expect(holders).toEqual([{ role_code: 'SECURITY_ADMIN' }]);
+  });
+
   it('needs security.sessions.revoke and a reason code', async () => {
     const userId = newId();
     await db.migrator.query("INSERT INTO identity.users (id, phone_masked, preferred_locale, status) VALUES ($1, '+91 ••••• •••99', 'te-IN', 'ACTIVE')", [userId]);

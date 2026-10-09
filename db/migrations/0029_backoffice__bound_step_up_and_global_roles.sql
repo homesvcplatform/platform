@@ -5,6 +5,9 @@
 -- 2. Passkey enrolment mode: every REGISTRATION challenge records whether it was issued under the first-passkey exemption
 --    or after a bound step-up, so completion can refuse a stale first-passkey challenge once a passkey exists.
 -- 3. Global-only roles (05 §5.3 scope column): SECURITY_ADMIN, FINANCE and AUDITOR can't be granted city-scoped.
+-- 4. Session revocation (ADR-024 R12, founder decision 2026-10-09): SECURITY_ADMIN only for now. SUPPORT_L2 and
+--    SAFETY_OFFICER lose `security.sessions.revoke` (seeded by 0027 from the 05 §11 matrix): users carry no city or
+--    region, so their city / region scope can't be applied. Revisit when the product defines those semantics.
 --
 -- Pre-existing data (explicit, never silent):
 -- - webauthn_challenges: rows written before this migration can't satisfy the new binding. They are single-use 5-minute
@@ -26,6 +29,7 @@ ALTER TABLE backoffice.webauthn_challenges ADD COLUMN used_at timestamptz;
 
 ALTER TABLE backoffice.roles ADD COLUMN global_only boolean NOT NULL DEFAULT false;
 UPDATE backoffice.roles SET global_only = true WHERE code IN ('SECURITY_ADMIN', 'FINANCE', 'AUDITOR');
+DELETE FROM backoffice.role_permissions WHERE permission = 'security.sessions.revoke' AND role_code IN ('SUPPORT_L2', 'SAFETY_OFFICER');
 
 DO $$
 DECLARE

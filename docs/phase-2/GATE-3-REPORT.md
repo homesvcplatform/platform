@@ -70,14 +70,14 @@ Two independent AI review reports were verified finding by finding (ADR-024 R1�
 
 **Second review round (ADR-024 R7–R12):** confirmed and fixed: the decision value bound into the step-up (R7), the first-passkey enrolment race (R9) and the NULL hole in migration 0029's CHECK (R10). 0029 now handles pre-existing data explicitly (R11). The concurrency tests were corrected (R8): only the database-level test, which asserts the lock wait via `pg_blocking_pids`, proves the single-use UPDATE guard; the API-level tests are serialised by row locks and are described as such.
 
-**Open decision (R12, blocker for any city-scoped support role in production):** whether `security.sessions.revoke` held through a city-scoped grant (SUPPORT_L2, SAFETY_OFFICER) should be limited to users "in" those cities. Today it isn't. Deciding needs: (1) which city a user belongs to for this purpose (customer address cities, technician `city_id`, field-agent linkage, or the city of the job / complaint being handled); (2) how SAFETY_OFFICER's "region" scope maps to cities; (3) whether identity gets that city through a new port (identity may not depend on customers / workforce). Until decided, the policy is as the matrix states ("user (reason)"), unscoped.
+**R12 decided (founder, 2026-10-09): session revocation is SECURITY_ADMIN only for now.** A deliberate Gate 3 security / product restriction. Users carry no city or region, so a city-scoped SUPPORT_L2 or region-scoped SAFETY_OFFICER couldn't be limited to their scope. Migration 0029 removes `security.sessions.revoke` from both roles, the 05 §11 matrix row reads ❌ for them, and the identity policy counts the permission only from a GLOBAL grant. Public users still revoke only their own sessions; the IVR surface still can't revoke. No city / region attribution or cross-module lookup was added. Broader scoped revocation can be revisited once the product defines city / region semantics for users.
 
 **Repository control (owner action):** the live `main` ruleset (`main-protection-interim`, TE-03) requires 0 approvals and does **not** list `two-reviewers-for-sensitive-paths` as a required check. That is the documented TE-03 interim state for a single-member organisation (making it required now would block every merge, since authors can't approve their own PRs). The intended final ruleset (`.github/rulesets/main-protection.json`) does require it with 1 approval and code-owner review. Owner action, once a second human reviewer exists: apply the final ruleset (TE-03 removal). Not changed here: no admin access from this environment, and changing it is the owner's decision.
 
 ## 4. Tech debt register delta
 | Item | Due |
 |---|---|
-| HTTP framework adapter (ADR-024 #1: NestJS needs a build step vs type stripping) | Founder decision before Gate 5/8 |
+| Choose the decorator-free HTTP library and add its adapter over the framework-neutral handlers (ADR-024 #1; NestJS rejected) | Before the first served endpoint (Gate 5/8) |
 | Valkey rate-limit store; Valkey session denylist (DB check is the fallback today) | Deployment (TE-01) |
 | Agent second-factor enrolment and completion (passkey / TOTP) | With the agent surface |
 | Break-glass (05 §9), JIT elevation, PII-reveal workflow, access recertification | Their gates |
@@ -89,11 +89,11 @@ Two independent AI review reports were verified finding by finding (ADR-024 R1�
 Real KMS key policies per data class and per role (`kms-local` enforces the same grants in CI), Secrets Manager for peppers and signing keys, the asymmetric KMS signing key, BFF↔api mTLS, Valkey, CloudTrail decrypt-rate alarms (SR-06), the zero-trust proxy in front of `admin-api`.
 
 ## 6. Conditions (why PASS WITH CONDITIONS)
-1. **ADR-024 acceptance**, including the **open item #1** (HTTP framework vs type stripping), decided before the first served endpoint.
+1. **ADR-024 acceptance.** Item #1 is decided (decorator-free framework, NestJS rejected); the exact HTTP library is a follow-up decision before the first served endpoint.
 2. **Scoped security review of the custom WebAuthn CBOR decoder and passkey verification** (ADR-024 #2, hardened per R4) **before any real admin passkey is registered or used.** Not done; Gate 3 has used test authenticators only, and the code refuses passkey ceremonies outside `local` / `test` until the review outcome is recorded.
 3. **AWS-dependent checks** (§5), recorded when AWS resumes (TE-02 removal condition, amended), including the shared atomic (Valkey) rate-limit store that deployed compositions now require.
 4. **SR-02 browser-storage E2E** (no tokens in localStorage / sessionStorage / IndexedDB) and the cookie-flag check in a real browser run with the PWA (Gate 8); Gate 3 proves it at the API level (no token in any browser-surface response).
-5. **R12 decision:** the city scope of `security.sessions.revoke` for SUPPORT_L2 / SAFETY_OFFICER (§3a).
+5. **R12 restriction:** session revocation is SECURITY_ADMIN only (decided, §3a). Widening it to SUPPORT_L2 / SAFETY_OFFICER needs city / region semantics for users first.
 6. Gate 1 and Gate 2 conditions are unchanged, including TE-03: `two-reviewers-for-sensitive-paths` becomes a required check only with the final ruleset (owner action, §3a).
 
 ## 7. Decision

@@ -12,7 +12,7 @@
 | Monorepo | **pnpm workspaces** + **Turborepo** | pnpm's strict `node_modules` blocks phantom dependencies (boundary safety). Turborepo task graph and caching. Simpler than Nx |
 | Runtime | Node.js active LTS | ADR-014 |
 | Language | TypeScript `strict` (+ `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) | Correctness |
-| Backend framework | NestJS (per process role) | ADR-014 |
+| Backend framework | Decorator-free HTTP library compatible with Node type stripping (to be chosen before the first served endpoint) over framework-neutral handlers; NestJS rejected | ADR-024 #1 (amends ADR-014) |
 | DB access / migrations | Drizzle (typed queries) + **hand-written forward-only SQL migrations** + `squawk` lint | Phase 1 03 §14.7 |
 | Queue / timers | Graphile Worker | ADR-015 |
 | Validation / contracts | Zod → OpenAPI 3.1 | Phase 1 04 |
@@ -33,10 +33,10 @@
 ├─ apps/                         # deployable entrypoints (thin: compose packages, no business logic)
 │  ├─ web-bff/                   # Next.js: customer PWA + field-agent web + BFF routes (session cookie, signed client-IP)
 │  ├─ admin-web/                 # React SPA for the admin console (static, served by admin-api only)   ← added; see §6
-│  ├─ api/                       # NestJS: /v1 customer, technician, agent surfaces
-│  ├─ admin-api/                 # NestJS: /admin/v1 (separate realm, zero-trust proxy)
-│  ├─ webhook/                   # NestJS: provider callbacks → verify, persist raw, ack, enqueue
-│  ├─ voice/                     # NestJS: IVR flow engine (internal only)
+│  ├─ api/                       # HTTP:   /v1 customer, technician, agent surfaces
+│  ├─ admin-api/                 # HTTP:   /admin/v1 (separate realm, zero-trust proxy)
+│  ├─ webhook/                   # HTTP:   provider callbacks → verify, persist raw, ack, enqueue
+│  ├─ voice/                     # HTTP:   IVR flow engine (internal only)
 │  ├─ worker/                    # Graphile Worker runner: outbox relay, subscribers, ledger postings, file scanning dispatch
 │  ├─ scheduler/                 # singleton: sweeper, cron jobs (retention, payout batch build, partitions)
 │  ├─ media-scanner/             # isolated decoder/scan task (SR-09): minimal IAM, no DB role, no egress   ← added; see §6
