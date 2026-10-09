@@ -21,6 +21,7 @@ afterAll(async () => {
   await db?.close();
 });
 
+const queueLog: string[] = [];
 const pending = async (key: string) =>
   (await db.migrator.query('SELECT count(*)::int AS n FROM graphile_worker.jobs WHERE key = $1', [key])).rows[0].n as number;
 
@@ -48,7 +49,7 @@ describe('durable timers', () => {
       await withTransaction(api, (c) => scheduleTimer(c, { task: 'test.timer.fire', key: 'replace-1', runAt: new Date(Date.now() + 60_000 + i), payload: { i } }));
     }
     expect(await pending('replace-1')).toBe(1);
-    const payload = (await db.migrator.query('SELECT payload FROM graphile_worker.jobs WHERE key = $1', ['replace-1'])).rows[0].payload;
+    const payload = (await db.migrator.query('SELECT payload FROM graphile_worker._private_jobs WHERE key = $1', ['replace-1'])).rows[0].payload;
     expect(payload).toEqual({ i: 2 });
     await withTransaction(api, (c) => cancelTimer(c, 'replace-1'));
     expect(await pending('replace-1')).toBe(0);
@@ -56,10 +57,13 @@ describe('durable timers', () => {
 
   it('the worker runs due timers once', async () => {
     const fired: unknown[] = [];
-    const runner = await startTimerRunner({ pool: worker, tasks: { 'test.timer.fire': async (p) => { fired.push(p); } }, pollIntervalMs: 200 });
+    const runner = await startTimerRunner({ pool: worker, tasks: { 'test.timer.fire': async (p) => { fired.push(p); } }, pollIntervalMs: 200,
+      onLog: (level, message) => { if (level === 'error' || level === 'warning') queueLog.push(`${level}: ${message}`); } });
     try {
       await withTransaction(api, (c) => scheduleTimer(c, { task: 'test.timer.fire', key: 'due-1', runAt: new Date(Date.now() - 1_000), payload: { n: 1 } }));
-      await waitFor(() => fired.length === 1);
+      await waitFor(() => fired.length === 1).catch((error: unknown) => {
+        throw new Error(`${(error as Error).message}; queue log: ${queueLog.slice(0, 5).join(' | ')}`);
+      });
       await new Promise((r) => setTimeout(r, 500));
       expect(fired).toEqual([{ n: 1 }]);
       expect(await pending('due-1')).toBe(0);

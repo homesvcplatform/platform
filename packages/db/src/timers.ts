@@ -55,6 +55,8 @@ export interface TimerRunnerOptions {
   /** Graphile crontab, e.g. the 1-minute sweeper (`* * * * * jobs.sweep`). */
   readonly crontab?: string;
   readonly pollIntervalMs?: number;
+  /** Queue diagnostics (level and message only; payloads are never passed). Silent by default. */
+  readonly onLog?: (level: string, message: string) => void;
 }
 
 /** Starts a timer runner on the worker pool. `stop()` drains; `kill()` simulates a crash in tests. */
@@ -62,7 +64,8 @@ export async function startTimerRunner(o: TimerRunnerOptions): Promise<Runner> {
   const taskList: TaskList = {};
   for (const [name, handler] of Object.entries(o.tasks)) taskList[name] = async (payload) => handler(payload);
   return run({
-    pgPool: o.pool, schema: TIMER_SCHEMA, taskList, concurrency: o.concurrency ?? 4, noHandleSignals: true, logger: silent,
+    pgPool: o.pool, schema: TIMER_SCHEMA, taskList, concurrency: o.concurrency ?? 4, noHandleSignals: true,
+    logger: o.onLog ? new GraphileLogger(() => (level, message) => o.onLog?.(level, message)) : silent,
     pollInterval: o.pollIntervalMs ?? 1_000, ...(o.crontab ? { crontab: o.crontab } : {}),
   });
 }
