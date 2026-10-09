@@ -94,9 +94,14 @@ export function isTerminal(machine: Machine, state: string): boolean {
   return next !== undefined && next.length === 0;
 }
 
-/** Every allowed (machine, from, to) triple: the content of `jobs.allowed_transitions`. */
+/** Marks a creation (INSERT) in `jobs.allowed_transitions`: allowed initial states use this as `from`. */
+export const CREATED = '(new)';
+
+/** Every allowed (machine, from, to) triple, creations included: the content of `jobs.allowed_transitions`. */
 export function allowedTransitions(): { machine: Machine; from: string; to: string }[] {
-  return (Object.keys(MACHINES) as Machine[]).flatMap((machine) =>
-    Object.entries(MACHINES[machine].transitions as Record<string, readonly string[]>)
-      .flatMap(([from, tos]) => tos.map((to) => ({ machine, from, to }))));
+  return (Object.keys(MACHINES) as Machine[]).flatMap((machine) => [
+    ...MACHINES[machine].initial.map((to) => ({ machine, from: CREATED, to })),
+    ...Object.entries(MACHINES[machine].transitions as Record<string, readonly string[]>)
+      .flatMap(([from, tos]) => tos.map((to) => ({ machine, from, to }))),
+  ]);
 }

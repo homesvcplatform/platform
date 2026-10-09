@@ -5,7 +5,7 @@ export const moduleName = 'jobs' as const;
 export const schemaName = 'jobs' as const;
 export type { BillIssuer, MaterialUsageRecorder, TransactionContext } from './ports.ts';
 export {
-  allowedTransitions, assertTransition, canTransition, InvalidTransitionError, isTerminal, MACHINES, statesOf,
+  allowedTransitions, assertTransition, canTransition, CREATED, InvalidTransitionError, isTerminal, MACHINES, statesOf,
 } from '../domain/transitions.ts';
 export type { AssignmentStatus, JobStatus, Machine, RepairOrderStatus, VisitStatus } from '../domain/transitions.ts';
 export { FIXTURE_LIFECYCLE_POLICY } from '../domain/policy.ts';

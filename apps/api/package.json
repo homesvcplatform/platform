@@ -16,7 +16,8 @@
     "@hsp/observability": "workspace:*",
     "pg": "8.23.0",
     "@hsp/module-catalog": "workspace:*",
-    "@hsp/module-geo": "workspace:*"
+    "@hsp/module-geo": "workspace:*",
+    "@hsp/module-jobs": "workspace:*"
   },
   "devDependencies": {
     "@hsp/adapter-kms-local": "workspace:*",

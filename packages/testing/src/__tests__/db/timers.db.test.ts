@@ -58,11 +58,13 @@ describe('durable timers', () => {
   it('the worker runs due timers once', async () => {
     const fired: unknown[] = [];
     const runner = await startTimerRunner({ pool: worker, tasks: { 'test.timer.fire': async (p) => { fired.push(p); } }, pollIntervalMs: 200,
-      onLog: (level, message) => { if (level === 'error' || level === 'warning') queueLog.push(`${level}: ${message}`); } });
+      onLog: (level, message) => { queueLog.push(`${level}: ${message.slice(0, 200)}`); } });
     try {
       await withTransaction(api, (c) => scheduleTimer(c, { task: 'test.timer.fire', key: 'due-1', runAt: new Date(Date.now() - 1_000), payload: { n: 1 } }));
-      await waitFor(() => fired.length === 1).catch((error: unknown) => {
-        throw new Error(`${(error as Error).message}; queue log: ${queueLog.slice(0, 5).join(' | ')}`);
+      await waitFor(() => fired.length === 1).catch(async (error: unknown) => {
+        const job = (await db.migrator.query(`SELECT j.run_at, now() AS db_now, j.attempts, j.locked_at, j.locked_by, j.last_error, t.identifier
+          FROM graphile_worker._private_jobs j JOIN graphile_worker._private_tasks t ON t.id = j.task_id WHERE j.key = 'due-1'`)).rows[0];
+        throw new Error(`${(error as Error).message}; job: ${JSON.stringify(job)}; queue log: ${queueLog.slice(0, 15).join(' | ')}`);
       });
       await new Promise((r) => setTimeout(r, 500));
       expect(fired).toEqual([{ n: 1 }]);
