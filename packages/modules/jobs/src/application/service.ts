@@ -384,7 +384,7 @@ export class JobsService {
     let status = visit['status'] as string;
     if (status !== 'MATCHING') {
       assertTransition('visit', status, 'MATCHING');
-      await c.query(SQL.setVisitStatus, [visitId, 'MATCHING', now]);
+      await c.query(SQL.setVisitMatching, [visitId, now]);
       status = 'MATCHING';
     }
     const assignmentId = newId();
@@ -618,7 +618,7 @@ export class JobsService {
     const wait = (await c.query(SQL.openWait, [visitId])).rows[0] as Row | undefined;
     if (wait) await c.query(SQL.endWait, [wait['id'], now, 'CANCELLED', 0, 0]);
     assertTransition('visit', visit['status'] as string, 'MATCHING');
-    await c.query(SQL.setVisitStatus, [visitId, 'MATCHING', now]);
+    await c.query(SQL.setVisitMatching, [visitId, now]);
     const job = (await c.query(SQL.lockJob, [visit['job_id']])).rows[0] as Row;
     if (job['status'] === 'IN_DIAGNOSIS') await c.query(SQL.setJobStatus, [visit['job_id'], 'REQUESTED', now]);
     await this.#cancelTimers(c, visitId, ['techNoShow', 'customerNoShow']);
@@ -694,7 +694,7 @@ export class JobsService {
         return false;
       }
       await this.#context(c, SYSTEM, null, 'MATCH_START');
-      await c.query(SQL.setVisitStatus, [visitId, 'MATCHING', now]);
+      await c.query(SQL.setVisitMatching, [visitId, now]);
       await this.#schedule(c, visitId, 'matchSla', new Date(now.getTime() + this.#slaMs(visit)));
       await this.#event(c, 'VisitReadyForMatching', 'Visit', visitId, (visit['version'] as number) + 1, visit['city_id'] as string, { visitId }, null);
       return true;
@@ -706,7 +706,7 @@ export class JobsService {
     return withTransaction(this.#d.pool, async (c) => {
       const visit = (await c.query(SQL.lockVisit, [visitId])).rows[0] as Row | undefined;
       if (!visit || visit['status'] !== 'MATCHING') return false;
-      const since = ((await c.query(SQL.matchingSince, [visitId])).rows[0] as Row)['since'] as Date | null;
+      const since = visit['matching_since'] as Date | null;
       const now = this.#now();
       const due = new Date((since ?? now).getTime() + this.#slaMs(visit));
       if (due.getTime() > now.getTime()) {
@@ -802,7 +802,7 @@ export class JobsService {
     };
     return {
       matchStart: await run(await ids(SQL.overduePlanned, [now, p.matchLeadMs, limit]), (id) => this.onMatchStart(id)),
-      matchSla: await run(await ids(SQL.overdueMatching, [limit]), (id) => this.onMatchSla(id)),
+      matchSla: await run(await ids(SQL.overdueMatching, [now, p.asapMatchSlaMs, p.scheduledMatchSlaMs, limit]), (id) => this.onMatchSla(id)),
       techNoShow: await run(await ids(SQL.overdueNoShow, [now, p.techNoShowGraceMs, limit]), (id) => this.onTechNoShow(id)),
       customerNoShow: await run(await ids(SQL.overdueWaits, [now, p.waitGraceMs, limit]), (id) => this.onCustomerNoShow(id)),
       overrun: await run(await ids(SQL.overdueOverrun, [now, p.maxVisitMs, limit]), (id) => this.onOverrun(id)),

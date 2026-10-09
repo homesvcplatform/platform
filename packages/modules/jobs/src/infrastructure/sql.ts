@@ -42,19 +42,21 @@ export const SQL = {
       FROM jobs.visits v JOIN jobs.jobs j ON j.id = v.job_id WHERE v.id = $1`,
   lockVisit: `
     SELECT v.id, v.job_id, v.city_id, v.locality_id, v.purposes, v.status, v.urgency, lower(v.service_window) AS window_start,
-           upper(v.service_window) AS window_end, v.start_code_hash, v.start_code_attempts, v.arrived_at, v.version
+           upper(v.service_window) AS window_end, v.start_code_hash, v.start_code_attempts, v.arrived_at, v.matching_since, v.version
       FROM jobs.visits v WHERE v.id = $1 FOR UPDATE`,
   setVisitStatus: `UPDATE jobs.visits SET status = $2, updated_at = $3, version = version + 1 WHERE id = $1`,
+  setVisitMatching: `UPDATE jobs.visits SET status = 'MATCHING', matching_since = $2, updated_at = $2, version = version + 1 WHERE id = $1`,
   setVisitDeparted: `UPDATE jobs.visits SET status = 'EN_ROUTE', departed_at = $2, updated_at = $2, version = version + 1 WHERE id = $1`,
   setVisitArrived: `UPDATE jobs.visits SET status = 'ON_SITE', arrived_at = $2, updated_at = $2, version = version + 1 WHERE id = $1`,
   setVisitWorkStarted: `UPDATE jobs.visits SET status = 'IN_PROGRESS', work_started_at = $2, updated_at = $2, version = version + 1 WHERE id = $1`,
+  // A window that never opened (terminal before its start) records no open time.
   setVisitTerminal: `
-    UPDATE jobs.visits SET status = $2, terminal_reason_code = $3, disclosure_closes_at = $4, updated_at = $5, version = version + 1
+    UPDATE jobs.visits SET status = $2, terminal_reason_code = $3, disclosure_closes_at = $4, updated_at = $5, version = version + 1,
+           disclosure_opens_at = CASE WHEN disclosure_opens_at > $5 THEN NULL ELSE disclosure_opens_at END
      WHERE id = $1`,
   setVisitAssigned: `UPDATE jobs.visits SET status = 'ASSIGNED', disclosure_opens_at = $2, disclosure_closes_at = NULL, updated_at = $3, version = version + 1 WHERE id = $1`,
   setStartCode: `UPDATE jobs.visits SET start_code_hash = $2, updated_at = $3 WHERE id = $1`,
   bumpStartCodeAttempts: `UPDATE jobs.visits SET start_code_attempts = start_code_attempts + 1, updated_at = $2 WHERE id = $1 RETURNING start_code_attempts`,
-  matchingSince: `SELECT max(created_at) AS since FROM jobs.visit_status_history WHERE visit_id = $1 AND to_status = 'MATCHING'`,
 
   activeAssignment: `SELECT id, technician_user_id, created_at FROM jobs.assignments WHERE visit_id = $1 AND status = 'ACTIVE'`,
   latestAssignmentOf: `
@@ -90,7 +92,9 @@ export const SQL = {
   overduePlanned: `
     SELECT id FROM jobs.visits WHERE status = 'PLANNED'
        AND (urgency = 'ASAP' OR lower(service_window) - make_interval(secs => $2 / 1000.0) <= $1) LIMIT $3`,
-  overdueMatching: `SELECT id FROM jobs.visits WHERE status = 'MATCHING' LIMIT $1`,
+  overdueMatching: `
+    SELECT id FROM jobs.visits WHERE status = 'MATCHING'
+       AND matching_since + make_interval(secs => (CASE WHEN urgency = 'ASAP' THEN $2 ELSE $3 END) / 1000.0) <= $1 LIMIT $4`,
   overdueNoShow: `
     SELECT v.id FROM jobs.visits v
      WHERE v.status IN ('ASSIGNED','EN_ROUTE') AND v.arrived_at IS NULL

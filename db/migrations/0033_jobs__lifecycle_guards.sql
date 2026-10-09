@@ -11,6 +11,9 @@
 SET lock_timeout = '3s';
 SET statement_timeout = '60s';
 
+-- When the visit last entered MATCHING (application clock), for the matching SLA timer and the sweeper.
+ALTER TABLE jobs.visits ADD COLUMN matching_since timestamptz;
+
 -- The allowed moves, generated from packages/modules/jobs/src/domain/transitions.ts ('(new)' = creation).
 -- A DB test keeps this table equal to the code tables.
 CREATE TABLE jobs.allowed_transitions (
@@ -198,6 +201,7 @@ REVOKE ALL ON FUNCTION jobs.guard_transition(), jobs.record_transition(), jobs.g
   jobs.guard_repair_order_visit() FROM PUBLIC;
 
 SELECT platform.classify('jobs.allowed_transitions', 'I');
+SELECT platform.classify('jobs.visits', 'I');
 SELECT platform.classify('jobs.assignment_status_history', 'I');
 INSERT INTO platform.archive_policies (table_schema, table_name, hot_retention, archive_mode, legal_basis) VALUES
   ('jobs', 'assignment_status_history', interval '3 years', 'ARCHIVE_PSEUDONYMISED', 'Phase 1 03 §14.9: jobs/visits close + 3 y, then anonymise');
