@@ -98,7 +98,7 @@ export function createBackofficeHttp(service: BackofficeService): (req: AdminHtt
         case 'POST /admin/v1/step-up/options': {
           const actor = await actorOf(req);
           const body = parse(contracts.stepUpOptions, req.body);
-          return json(200, await service.beginStepUp(actor, { operation: body.operation, approvalRequestId: body.approvalRequestId }));
+          return json(200, await service.beginStepUp(actor, { operation: body.operation, approvalRequestId: body.approvalRequestId, decision: body.decision }));
         }
         case 'POST /admin/v1/step-up': {
           const body = parse(contracts.passkeyAssertion, req.body);

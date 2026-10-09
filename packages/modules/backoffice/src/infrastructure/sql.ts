@@ -2,8 +2,11 @@
 export const SQL = {
   adminBySubject: 'SELECT id, status FROM backoffice.admin_users WHERE idp_subject = $1',
   adminById: 'SELECT id, status, idp_subject FROM backoffice.admin_users WHERE id = $1',
-  /** Serialises logins per admin so the single-active-session rule holds under concurrent logins. */
-  lockAdmin: 'SELECT id FROM backoffice.admin_users WHERE id = $1 FOR UPDATE',
+  /**
+   * Serialises logins and passkey enrolment per admin (single active session; first-passkey exemption). NO KEY UPDATE
+   * conflicts with itself but not with the KEY SHARE locks that inserts referencing the admin take.
+   */
+  lockAdmin: 'SELECT id FROM backoffice.admin_users WHERE id = $1 FOR NO KEY UPDATE',
   revokeAdminSessions: `UPDATE backoffice.admin_sessions SET revoked_at = $2, revoke_reason = $3
                          WHERE admin_user_id = $1 AND revoked_at IS NULL RETURNING id`,
   insertSession: `INSERT INTO backoffice.admin_sessions (id, admin_user_id, token_hash, auth_methods, idle_expires_at, absolute_expires_at, created_at, last_seen_at)
@@ -19,21 +22,22 @@ export const SQL = {
 
   credentialCount: 'SELECT count(*)::int AS n FROM backoffice.admin_webauthn_credentials WHERE admin_user_id = $1 AND revoked_at IS NULL',
   insertChallenge: `INSERT INTO backoffice.webauthn_challenges (id, admin_user_id, session_id, purpose, challenge_hash, action, resource_id,
-                       payload_hash, expires_at, created_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-  lockChallenge: `SELECT id, admin_user_id, session_id, purpose, challenge_hash, action, resource_id, payload_hash, expires_at, consumed_at,
-                         verified_at, used_at
+                       payload_hash, decision, enrollment_mode, expires_at, created_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+  lockChallenge: `SELECT id, admin_user_id, session_id, purpose, challenge_hash, action, resource_id, payload_hash, decision, enrollment_mode,
+                         expires_at, consumed_at, verified_at, used_at
                     FROM backoffice.webauthn_challenges WHERE id = $1 FOR UPDATE`,
   markVerified: 'UPDATE backoffice.webauthn_challenges SET verified_at = $2 WHERE id = $1 AND verified_at IS NULL',
   /**
    * Single-use consumption of a step-up. Every eligibility condition is re-checked in the UPDATE itself (not only in the
    * preceding read), and the caller requires exactly one updated row: a concurrent or repeated use updates zero rows.
-   * $3 operation, $4 admin, $5 session, $6 earliest valid verified_at, $7 resource id, $8 payload hash.
+   * $3 operation, $4 admin, $5 session, $6 earliest valid verified_at, $7 resource id, $8 payload hash, $9 decision.
    */
   markUsed: `UPDATE backoffice.webauthn_challenges SET used_at = $2
               WHERE id = $1 AND purpose = 'STEP_UP' AND action = $3 AND admin_user_id = $4 AND session_id = $5
                 AND used_at IS NULL AND verified_at IS NOT NULL AND verified_at <= $2 AND verified_at >= $6
                 AND resource_id IS NOT DISTINCT FROM $7::uuid AND payload_hash IS NOT DISTINCT FROM $8::bytea
+                AND decision IS NOT DISTINCT FROM $9::text
             RETURNING id`,
   consumeChallenge: 'UPDATE backoffice.webauthn_challenges SET consumed_at = $2 WHERE id = $1',
   insertCredential: `INSERT INTO backoffice.admin_webauthn_credentials (id, admin_user_id, credential_id, public_key_spki, sign_count, backup_eligible, created_at)

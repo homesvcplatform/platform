@@ -33,10 +33,14 @@ export const approvalDecision = z.strictObject({
   stepUpId: z.uuid(),
 });
 
-/** The client selects one server-defined operation; the server binds the resource (approval request + payload hash). */
+/**
+ * The client selects one server-defined operation; the server binds the resource (approval request + payload hash).
+ * A grant-decision step-up is also bound to the decision it will be used for.
+ */
 export const stepUpOptions = z.strictObject({
   operation: z.enum(['security.grant.decide', 'backoffice.passkey.register']),
   approvalRequestId: z.uuid().optional(),
+  decision: z.enum(['APPROVE', 'REJECT']).optional(),
 });
 
 /** Needed only for an additional passkey (a step-up bound to backoffice.passkey.register). */

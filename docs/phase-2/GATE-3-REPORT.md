@@ -68,6 +68,10 @@ Two independent AI review reports were verified finding by finding (ADR-024 R1�
 
 **Deployment-only (unchanged, §5):** the shared atomic (Valkey) rate-limit store itself, real KMS policies, mTLS.
 
+**Second review round (ADR-024 R7–R12):** confirmed and fixed: the decision value bound into the step-up (R7), the first-passkey enrolment race (R9) and the NULL hole in migration 0029's CHECK (R10). 0029 now handles pre-existing data explicitly (R11). The concurrency tests were corrected (R8): only the database-level test, which asserts the lock wait via `pg_blocking_pids`, proves the single-use UPDATE guard; the API-level tests are serialised by row locks and are described as such.
+
+**Open decision (R12, blocker for any city-scoped support role in production):** whether `security.sessions.revoke` held through a city-scoped grant (SUPPORT_L2, SAFETY_OFFICER) should be limited to users "in" those cities. Today it isn't. Deciding needs: (1) which city a user belongs to for this purpose (customer address cities, technician `city_id`, field-agent linkage, or the city of the job / complaint being handled); (2) how SAFETY_OFFICER's "region" scope maps to cities; (3) whether identity gets that city through a new port (identity may not depend on customers / workforce). Until decided, the policy is as the matrix states ("user (reason)"), unscoped.
+
 **Repository control (owner action):** the live `main` ruleset (`main-protection-interim`, TE-03) requires 0 approvals and does **not** list `two-reviewers-for-sensitive-paths` as a required check. That is the documented TE-03 interim state for a single-member organisation (making it required now would block every merge, since authors can't approve their own PRs). The intended final ruleset (`.github/rulesets/main-protection.json`) does require it with 1 approval and code-owner review. Owner action, once a second human reviewer exists: apply the final ruleset (TE-03 removal). Not changed here: no admin access from this environment, and changing it is the owner's decision.
 
 ## 4. Tech debt register delta
@@ -89,7 +93,8 @@ Real KMS key policies per data class and per role (`kms-local` enforces the same
 2. **Scoped security review of the custom WebAuthn CBOR decoder and passkey verification** (ADR-024 #2, hardened per R4) **before any real admin passkey is registered or used.** Not done; Gate 3 has used test authenticators only, and the code refuses passkey ceremonies outside `local` / `test` until the review outcome is recorded.
 3. **AWS-dependent checks** (§5), recorded when AWS resumes (TE-02 removal condition, amended), including the shared atomic (Valkey) rate-limit store that deployed compositions now require.
 4. **SR-02 browser-storage E2E** (no tokens in localStorage / sessionStorage / IndexedDB) and the cookie-flag check in a real browser run with the PWA (Gate 8); Gate 3 proves it at the API level (no token in any browser-surface response).
-5. Gate 1 and Gate 2 conditions are unchanged, including TE-03: `two-reviewers-for-sensitive-paths` becomes a required check only with the final ruleset (owner action, §3a).
+5. **R12 decision:** the city scope of `security.sessions.revoke` for SUPPORT_L2 / SAFETY_OFFICER (§3a).
+6. Gate 1 and Gate 2 conditions are unchanged, including TE-03: `two-reviewers-for-sensitive-paths` becomes a required check only with the final ruleset (owner action, §3a).
 
 ## 7. Decision
 **PASS WITH CONDITIONS**. Every PR #6 check is green on GitHub (§2). Approver: founder (on merge of PR #6). Gate 4 not started.
