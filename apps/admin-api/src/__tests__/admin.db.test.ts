@@ -172,8 +172,8 @@ describe('role grants: maker-checker (05 §5.4 / §6, INV-19)', () => {
     checkerKey = await registerPasskey(checker);
     const grant = { adminUserId: admins['auditor-x'], roleCode: 'AUDITOR', scope: { kind: 'GLOBAL' } };
     // No self-grant.
-    expect((await req(maker, 'POST', '/admin/v1/grants', { ...grant, adminUserId: admins['sec-a'] })).body).toMatchObject({ code: 'FORBIDDEN' });
-    const requested = await req(maker, 'POST', '/admin/v1/grants', grant);
+    expect((await req(maker, 'POST', '/admin/v1/grants', { ...grant, adminUserId: admins['sec-a'] }, { 'idempotency-key': randomUUID() })).body).toMatchObject({ code: 'FORBIDDEN' });
+    const requested = await req(maker, 'POST', '/admin/v1/grants', grant, { 'idempotency-key': randomUUID() });
     expect(requested.status, JSON.stringify(requested.body)).toBe(202);
     const id = (requested.body as { approvalRequestId: string }).approvalRequestId;
     const decide = (s: AdminSession, decision = 'APPROVE') => req(s, 'POST', `/admin/v1/approvals/${id}/decision`, { decision });
@@ -193,7 +193,7 @@ describe('role grants: maker-checker (05 §5.4 / §6, INV-19)', () => {
 
   it('a tampered approval payload is not executed', async () => {
     const maker = await login('sec-a');
-    const r = await req(maker, 'POST', '/admin/v1/grants', { adminUserId: admins['nobody'], roleCode: 'FINANCE', scope: { kind: 'GLOBAL' } });
+    const r = await req(maker, 'POST', '/admin/v1/grants', { adminUserId: admins['nobody'], roleCode: 'FINANCE', scope: { kind: 'GLOBAL' } }, { 'idempotency-key': randomUUID() });
     const id = (r.body as { approvalRequestId: string }).approvalRequestId;
     await db.migrator.query(`UPDATE backoffice.approval_requests SET payload = jsonb_set(payload, '{roleCode}', '"SECURITY_ADMIN"') WHERE id = $1`, [id]);
     const checker = await login('sec-b');
@@ -217,6 +217,83 @@ describe('role grants: maker-checker (05 §5.4 / §6, INV-19)', () => {
     await expect(db.migrator.query(
       `INSERT INTO backoffice.admin_grants (id, admin_user_id, role_code, scope_kind, granted_by_admin_id, approved_by_admin_id, approval_request_id)
        VALUES ($1, $2, 'AUDITOR', 'GLOBAL', $3, $2, $4)`, [newId(), admins['nobody'], admins['sec-a'], approval])).rejects.toMatchObject({ code: '23514' });
+  });
+});
+
+describe('Idempotency-Key on POST /admin/v1/grants (04 §1.3)', () => {
+  const approvals = async (grantee: string) =>
+    ((await db.admin.query("SELECT count(*)::int AS n FROM backoffice.approval_requests WHERE resource_id = $1 AND status = 'PENDING'", [grantee])).rows[0].n as number);
+
+  it('requires a UUID key', async () => {
+    const maker = await login('sec-a');
+    const body = { adminUserId: admins['nobody'], roleCode: 'AUDITOR', scope: { kind: 'GLOBAL' } };
+    expect((await req(maker, 'POST', '/admin/v1/grants', body)).body).toMatchObject({ code: 'VALIDATION_FAILED', fields: [{ path: 'Idempotency-Key', code: 'REQUIRED' }] });
+    expect((await req(maker, 'POST', '/admin/v1/grants', body, { 'idempotency-key': 'not-a-uuid' })).body).toMatchObject({ fields: [{ code: 'INVALID' }] });
+  });
+
+  it('replays the first response for a retry (one approval request), refuses the key with another body, scopes keys per admin', async () => {
+    const grantee = await seedAdmin(`idem-${randomUUID().slice(0, 8)}`);
+    const maker = await login('sec-a');
+    const key = randomUUID();
+    const body = { adminUserId: grantee, roleCode: 'AUDITOR', scope: { kind: 'GLOBAL' } };
+    const first = await req(maker, 'POST', '/admin/v1/grants', body, { 'idempotency-key': key });
+    expect(first.status, JSON.stringify(first.body)).toBe(202);
+    expect(first.headers['idempotent-replay']).toBeUndefined();
+    const retry = await req(maker, 'POST', '/admin/v1/grants', { scope: { kind: 'GLOBAL' }, roleCode: 'AUDITOR', adminUserId: grantee }, { 'idempotency-key': key });
+    expect(retry.status).toBe(202);
+    expect(retry.headers['idempotent-replay']).toBe('true');
+    expect(retry.body).toEqual(first.body);
+    expect(await approvals(grantee)).toBe(1);
+
+    const reused = await req(maker, 'POST', '/admin/v1/grants', { ...body, roleCode: 'FINANCE' }, { 'idempotency-key': key });
+    expect(reused.body).toMatchObject({ code: 'IDEMPOTENCY_KEY_REUSED', status: 422 });
+    expect(await approvals(grantee)).toBe(1);
+
+    // The same key from another admin is a different request.
+    const other = await login('sec-b');
+    const theirs = await req(other, 'POST', '/admin/v1/grants', body, { 'idempotency-key': key });
+    expect(theirs.status).toBe(202);
+    expect(theirs.headers['idempotent-replay']).toBeUndefined();
+    expect(await approvals(grantee)).toBe(2);
+
+    // After the 24 h retention the key may be used again as a new request.
+    clock.advance(24 * 3_600_000 + 1_000);
+    const later = await login('sec-a');
+    const again = await req(later, 'POST', '/admin/v1/grants', body, { 'idempotency-key': key });
+    expect(again.status).toBe(202);
+    expect(again.headers['idempotent-replay']).toBeUndefined();
+    expect((again.body as { approvalRequestId: string }).approvalRequestId).not.toBe((first.body as { approvalRequestId: string }).approvalRequestId);
+  });
+
+  it('concurrent duplicates create one approval request; the other is replayed or told to retry (409)', async () => {
+    const grantee = await seedAdmin(`idem-${randomUUID().slice(0, 8)}`);
+    const maker = await login('sec-a');
+    const key = randomUUID();
+    const body = { adminUserId: grantee, roleCode: 'AUDITOR', scope: { kind: 'GLOBAL' } };
+    const results = await Promise.all([1, 2, 3].map(() => req(maker, 'POST', '/admin/v1/grants', body, { 'idempotency-key': key })));
+    for (const r of results) expect([202, 409], JSON.stringify(r.body)).toContain(r.status);
+    const ids = new Set(results.filter((r) => r.status === 202).map((r) => (r.body as { approvalRequestId: string }).approvalRequestId));
+    expect(ids.size).toBe(1);
+    expect(await approvals(grantee)).toBe(1);
+  });
+
+  it('an in-flight key held by another open transaction answers REQUEST_IN_PROGRESS with Retry-After', async () => {
+    const grantee = await seedAdmin(`idem-${randomUUID().slice(0, 8)}`);
+    const maker = await login('sec-a');
+    const key = randomUUID();
+    const blocker = await pool.connect();
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query(`INSERT INTO platform.idempotency_keys (actor_key, idem_key, endpoint, request_hash, status, created_at, expires_at)
+        VALUES ($1, $2, 'POST /admin/v1/grants', $3, 'IN_FLIGHT', now(), now() + interval '1 day')`, [`admin:${admins['sec-a']}`, key, randomBytes(32)]);
+      const r = await req(maker, 'POST', '/admin/v1/grants', { adminUserId: grantee, roleCode: 'AUDITOR', scope: { kind: 'GLOBAL' } }, { 'idempotency-key': key });
+      expect(r.body).toMatchObject({ code: 'REQUEST_IN_PROGRESS', status: 409 });
+      expect(r.headers['retry-after']).toBe('1');
+    } finally {
+      await blocker.query('ROLLBACK');
+      blocker.release();
+    }
+    expect(await approvals(grantee)).toBe(0);
   });
 });
 

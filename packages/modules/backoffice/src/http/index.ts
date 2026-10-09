@@ -29,7 +29,7 @@ export const backofficeEndpoints: readonly EndpointSpec[] = [
   { method: 'POST', path: '/admin/v1/passkeys', surface: 'admin', action: 'backoffice.passkey.manage', idempotency: 'implicit', rateClass: 'ADMIN' },
   { method: 'POST', path: '/admin/v1/step-up/options', surface: 'admin', action: 'backoffice.passkey.manage', idempotency: { none: 'issues a fresh single-use challenge' }, rateClass: 'ADMIN' },
   { method: 'POST', path: '/admin/v1/step-up', surface: 'admin', action: 'backoffice.passkey.manage', idempotency: 'implicit', rateClass: 'ADMIN' },
-  { method: 'POST', path: '/admin/v1/grants', surface: 'admin', action: 'backoffice.grant.request', idempotency: { none: 'a duplicate only creates another PENDING approval, which expires unexecuted after 24 h' }, rateClass: 'ADMIN' },
+  { method: 'POST', path: '/admin/v1/grants', surface: 'admin', action: 'backoffice.grant.request', idempotency: 'required', rateClass: 'ADMIN' },
   { method: 'POST', path: '/admin/v1/approvals/:approvalRequestId/decision', surface: 'admin', action: 'backoffice.grant.decide', idempotency: 'implicit', rateClass: 'ADMIN' },
 ];
 
@@ -44,6 +44,16 @@ function parse<S extends z.ZodType>(schema: S, body: unknown): z.infer<S> {
 }
 
 const b = (s: string) => Buffer.from(s, 'base64url');
+
+/** 04 §1.3: endpoints declared `required` need an `Idempotency-Key` UUID header. */
+function idempotencyKey(req: AdminHttpRequest): string {
+  const key = req.headers['idempotency-key'];
+  if (!key) throw new AppError('VALIDATION_FAILED', { fields: [{ path: 'Idempotency-Key', code: 'REQUIRED' }] });
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)) {
+    throw new AppError('VALIDATION_FAILED', { fields: [{ path: 'Idempotency-Key', code: 'INVALID' }] });
+  }
+  return key.toLowerCase();
+}
 
 /** The challenge the authenticator signed (checked again against the stored hash and inside verification). */
 function challengeOf(clientDataJSON: string): string {
@@ -94,8 +104,11 @@ export function createBackofficeHttp(service: BackofficeService): (req: AdminHtt
           return json(204);
         }
         case 'POST /admin/v1/grants': {
+          const actor = await actorOf(req);
+          const key = idempotencyKey(req);
           const body = parse(contracts.grantRequest, req.body);
-          return json(202, await service.requestGrant(await actorOf(req), body, req.meta));
+          const r = await service.requestGrant(actor, body, key, req.meta);
+          return json(202, { approvalRequestId: r.approvalRequestId }, r.replayed ? { 'idempotent-replay': 'true' } : {});
         }
         case 'POST /admin/v1/approvals/:approvalRequestId/decision': {
           const id = /\/admin\/v1\/approvals\/([0-9a-f-]{36})\/decision$/.exec(req.path)?.[1] ?? '';
@@ -108,7 +121,8 @@ export function createBackofficeHttp(service: BackofficeService): (req: AdminHtt
       }
     } catch (error) {
       const problem = toProblem(error, req.meta.requestId);
-      return { status: problem.status, headers: { 'content-type': 'application/problem+json', 'cache-control': 'no-store' }, body: problem };
+      const retry = error instanceof AppError && error.retryAfterSec !== undefined ? { 'retry-after': String(error.retryAfterSec) } : {};
+      return { status: problem.status, headers: { 'content-type': 'application/problem+json', 'cache-control': 'no-store', ...retry }, body: problem };
     }
   };
 }

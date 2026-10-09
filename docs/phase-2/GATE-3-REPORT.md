@@ -13,6 +13,7 @@
 | Step-up | Public: a fresh STEP_UP OTP on the current session (10 min). Admin: WebAuthn assertion (5 min) |
 | IVR PIN credential store | Argon2id (Node built-in, PHC), trivial PINs refused, 3 wrong per call ends the call, 5 wrong in 24 h locks until a verified reset |
 | Admin SSO via a test IdP + passkey enforcement | `backoffice`: IdP / proxy ES256 assertion required on every request together with the admin session; SMS / OTP / TOTP / password methods refused (`hwk` or `acr=phr/phrh` required); one concurrent session, 10 h / 30 min. Passkey registration (first one only right after login) and step-up; maker-checker role grants (three people, payload hash, executed once). Test IdP and software authenticator in `@hsp/testing` |
+| Idempotency (04 §1.3) | `POST /admin/v1/grants` requires `Idempotency-Key`: a retry replays the first response (one approval request), the key with another body → 422, a key in flight → 409 + Retry-After, keys scoped per admin, 24 h retention (ADR-024 #16) |
 | Policy engine + registry | `@hsp/policy`: `can(actor, action, resource, ctx)`, default deny, scoped admin permissions (wildcard families), decision logging, endpoint registry check (B11 / B12) at composition |
 | Audit log (hash-chained) | `platform.append_audit_log` (SECURITY DEFINER) + `compliance.verify_audit_chain`; direct INSERT revoked from every runtime role; `change_summary` limited to field names and enum-like values |
 | Field crypto with per-class keys + encryption context (SR-06) | `@hsp/security` envelope (AES-256-GCM), one DEK per (subject, data class), context {subject_id, data_class}, DEK cache ≤ 5 min, crypto-shredding on erasure; `kms-local` enforces the SR-06 role grants; ESLint restricts `createFieldCrypto` to the reveal paths |
@@ -49,6 +50,7 @@ squawk lock-rule waivers on the empty `subject_keys` primary-key change; a JWT-s
 - The audit chain serialises audited commits per month (head lock); acceptable at pilot volume.
 - After an erasure, another process may decrypt the subject's data for up to 5 minutes from its DEK cache (SR-06 bound). Tested.
 - Identity users are created at OTP request (ADR-024 #6); never-verified rows need the retention job.
+- **The WebAuthn CBOR decoder is custom code without an independent security review** (ADR-024 #2). It is tested only against the software authenticator and malformed-input cases; it must pass a scoped security review before any real admin passkey is used (§6 condition 2).
 - The voice role has no DB grant on `identity.subject_keys`, so IVR can't reveal contact data yet (needed with the IVR gates; a grant migration then).
 
 ## 4. Tech debt register delta
@@ -59,7 +61,7 @@ squawk lock-rule waivers on the empty `subject_keys` primary-key change; a JWT-s
 | Agent second-factor enrolment and completion (passkey / TOTP) | With the agent surface |
 | Break-glass (05 §9), JIT elevation, PII-reveal workflow, access recertification | Their gates |
 | Seed loader still uses the fixture crypto (ADR-023 #10 replacement) | When the seed CLI is composed with `kms-local` at app level |
-| Idempotency-Key storage (no Gate 3 endpoint needs `required`) | First `required` business endpoint |
+| Encrypted idempotency response bodies (only needed once a `required` endpoint returns Confidential data) | First such endpoint |
 | Never-verified users purge | Retention job |
 
 ## 5. Not verifiable without AWS (TE-01 / TE-02)
@@ -67,9 +69,10 @@ Real KMS key policies per data class and per role (`kms-local` enforces the same
 
 ## 6. Conditions (why PASS WITH CONDITIONS)
 1. **ADR-024 acceptance**, including the **open item #1** (HTTP framework vs type stripping), decided before the first served endpoint.
-2. **AWS-dependent checks** (§5), recorded when AWS resumes (TE-02 removal condition, amended).
-3. **SR-02 browser-storage E2E** (no tokens in localStorage / sessionStorage / IndexedDB) and the cookie-flag check in a real browser run with the PWA (Gate 8); Gate 3 proves it at the API level (no token in any browser-surface response).
-4. Gate 1 and Gate 2 conditions are unchanged.
+2. **Scoped security review of the custom WebAuthn CBOR decoder and passkey verification** (ADR-024 #2) **before any real admin passkey is registered or used.** Not done; Gate 3 has used test authenticators only.
+3. **AWS-dependent checks** (§5), recorded when AWS resumes (TE-02 removal condition, amended).
+4. **SR-02 browser-storage E2E** (no tokens in localStorage / sessionStorage / IndexedDB) and the cookie-flag check in a real browser run with the PWA (Gate 8); Gate 3 proves it at the API level (no token in any browser-surface response).
+5. Gate 1 and Gate 2 conditions are unchanged.
 
 ## 7. Decision
 **PASS WITH CONDITIONS**. Every PR #6 check is green on GitHub (§2). Approver: founder (on merge of PR #6). Gate 4 not started.

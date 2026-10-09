@@ -10,7 +10,7 @@
 import type { KeyObject } from 'node:crypto';
 import type pg from 'pg';
 import { newId, type Clock } from '@hsp/kernel';
-import { appendAudit, withTransaction, type AuditEntry } from '@hsp/db';
+import { appendAudit, beginIdempotent, completeIdempotent, IdempotencyConflict, withTransaction, type AuditEntry } from '@hsp/db';
 import { AppError } from '@hsp/errors';
 import type { Logger } from '@hsp/observability';
 import type { Actor, PolicyRegistry, Scope } from '@hsp/policy';
@@ -285,11 +285,26 @@ export class BackofficeService {
 
   // ---------------------------------------------------------------- role grants (maker-checker)
 
-  async requestGrant(actor: Actor, input: GrantInput, meta: AdminRequestMeta): Promise<{ approvalRequestId: string }> {
+  /**
+   * Maker step. `Idempotency-Key` required (04 §1.3): a retry with the same key and body replays the first response
+   * (no second approval request); the same key with another body is refused.
+   */
+  async requestGrant(actor: Actor, input: GrantInput, idempotencyKey: string, meta: AdminRequestMeta): Promise<{ approvalRequestId: string; replayed: boolean }> {
     this.#require(actor, 'backoffice.grant.request', { granteeId: input.adminUserId, requesterId: actor.id ?? null });
     const now = this.#now();
     const payload = { adminUserId: input.adminUserId, roleCode: input.roleCode, scope: input.scope, expiresAt: input.expiresAt ?? null };
+    const idem = { actorKey: `admin:${actor.id ?? ''}`, idemKey: idempotencyKey, endpoint: 'POST /admin/v1/grants', requestHash: sha256(canonicalJson(payload)), now };
     return withTransaction(this.#d.pool, async (c) => {
+      let start;
+      try {
+        start = await beginIdempotent(c, idem);
+      } catch (error) {
+        if (error instanceof IdempotencyConflict) {
+          throw error.reason === 'KEY_REUSED' ? new AppError('IDEMPOTENCY_KEY_REUSED') : new AppError('REQUEST_IN_PROGRESS', { retryAfterSec: 1 });
+        }
+        throw error;
+      }
+      if (start.kind === 'REPLAY') return { ...(start.body as { approvalRequestId: string }), replayed: true };
       const grantee = (await c.query(SQL.adminById, [input.adminUserId])).rows[0] as Row | undefined;
       if (!grantee || grantee['status'] !== 'ACTIVE' || (await c.query(SQL.roleExists, [input.roleCode])).rows.length === 0) {
         throw new AppError('VALIDATION_FAILED');
@@ -297,9 +312,10 @@ export class BackofficeService {
       const id = newId();
       await c.query(SQL.insertApproval, [id, input.adminUserId, JSON.stringify(payload), sha256(canonicalJson(payload)), actor.id, now,
         new Date(now.getTime() + APPROVAL_TTL_MS)]);
+      await completeIdempotent(c, idem, 202, { approvalRequestId: id });
       await this.#audit(c, { actorType: 'ADMIN', actorId: actor.id ?? null, actorSessionId: actor.sessionId ?? null, action: 'approval.requested',
         resourceType: 'backoffice.approval_request', resourceId: id, outcome: 'SUCCESS', changeSummary: { actionType: 'security.grant', role: input.roleCode } }, meta);
-      return { approvalRequestId: id };
+      return { approvalRequestId: id, replayed: false };
     });
   }
 
