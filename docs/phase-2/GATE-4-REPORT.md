@@ -1,7 +1,7 @@
 # Gate 4 Review: Catalog, localization, geo
 
-> Date: 2026-10-09 · Proposed decision: **PASS WITH CONDITIONS** (see §6) · Started under **TE-02** (founder decision 2026-10-09, restriction 7 amended for Gate 4). Local and GitHub CI only, synthetic data only. No AWS, production, real PII, payments, telephony or KYC. Gate 5 **not started**.
-> Branch `gate4/catalog-localization-geo`, [PR #9](https://github.com/homesvcplatform/platform/pull/9) (draft; the founder squash-merges). Decisions: [ADR-025](../phase-1/15-architecture-decisions.md#adr-025-gate-4-catalog-localization-and-geo-decisions-phase-2-implementation-addendum) (Proposed).
+> Date: 2026-10-09 · Decision: **PASS WITH CONDITIONS** (see §6; final on merge of PR #9) · Started under **TE-02** (founder decision 2026-10-09, restriction 7 amended for Gate 4). Local and GitHub CI only, synthetic data only. No AWS, production, real PII, payments, telephony or KYC. Gate 5 **not started**.
+> Branch `gate4/catalog-localization-geo`, [PR #9](https://github.com/homesvcplatform/platform/pull/9) (draft; the founder squash-merges). Decisions: [ADR-025](../phase-1/15-architecture-decisions.md#adr-025-gate-4-catalog-localization-and-geo-decisions-phase-2-implementation-addendum) (**Accepted** 2026-10-09).
 
 ## 1. Scope delivered vs planned ([03 §Gate 4](03-phase-2-gates.md#gate-4-catalog-localization-geo))
 | Planned | Delivered |
@@ -36,6 +36,10 @@ Test setup only: moving the shared test clock 2 h forward idle-expired the admin
 - The ICU validator is custom code but only checks repository files; it never parses user input (ADR-025 #2).
 - Telugu UI strings are drafts: **native-speaker review is required before production enablement** (recorded by the gate, which fails closed outside `local` / `test`).
 
+### 3a. Founder decisions (2026-10-09), recorded in ADR-025 (accepted)
+1. **City-language permissions:** pricing admin proposes city-language changes with `locales.enable`; city manager approves with `locales.approve`; both city-scoped; proposer and approver must be different people (INV-19); approval needs the existing passkey step-up. Implemented as seeded in migration 0030 and enforced by the change-request policies (tested in `changes.db.test.ts`).
+2. **Passkey step-up for configuration approvals:** service-rule and city-language approvals use the existing step-up mechanism (operation `backoffice.change.decide`). The WebAuthn / CBOR verification implementation is not modified. Real configuration approvals stay disabled outside `local` / CI until the independent WebAuthn review passes: every step-up ceremony is refused there (`WEBAUTHN_INDEPENDENT_REVIEW_PASSED = false`, Gate 3 composition test), and a decision can't be made without a step-up.
+
 ## 4. Tech debt register delta
 | Item | Due |
 |---|---|
@@ -51,10 +55,10 @@ Test setup only: moving the shared test clock 2 h forward idle-expired the admin
 CDN caching of the catalog responses, the shared (Valkey) rate-limit store for `publicRead`, and everything already listed in the Gate 3 report §5.
 
 ## 6. Conditions (why PASS WITH CONDITIONS)
-1. **ADR-025 acceptance**, including **#6: the proposed roles for city-language changes** (pricing admin proposes `locales.enable`, city manager approves `locales.approve`; 05 §5.3 names no role).
+1. **Real configuration approvals outside local / CI** wait for the independent WebAuthn / CBOR review (Gate 3 condition; founder decision §3a.2).
 2. **Production locale enablement** needs the native-speaker review of the Telugu catalogs, IVR prompt coverage and approved notification templates; the gate refuses until those evidence sources exist.
 3. **Gate 3 conditions carried unchanged:** independent WebAuthn / CBOR review before any real admin passkey (this now also gates real configuration approvals); AWS-dependent checks; browser-storage E2E (Gate 8); final two-reviewer ruleset (TE-03); the HTTP library choice before the first served endpoint.
 4. **Gate 1 and Gate 2 conditions** remain tracked.
 
 ## 7. Decision
-Proposed **PASS WITH CONDITIONS**. Every PR #9 check is green on GitHub (§2). Approver: founder (on merge of PR #9). Gate 5 not started.
+**PASS WITH CONDITIONS.** ADR-025 accepted (2026-10-09), including the two founder decisions in §3a. Every PR #9 check is green on GitHub (§2). Approver: founder (on merge of PR #9). Gate 5 not started.
