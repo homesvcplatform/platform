@@ -19,7 +19,26 @@ Also: diagnosis-visit checkout (and the system auto-checkout 30 min after presen
 **Not in Gate 6** (their gates): matching of repair visits / direct offers (Gate 7; repair visits are assigned manually by ops); UI (Gates 8 / 9); photos, voice notes, receipts, after-photo rules and free-text notes (files / key class, ADR-027 #2); IVR approval and real call evidence (Gate 10); real bills, payments, ledger, diagnosis payout postings (Gate 11). No HTTP library is chosen and nothing is served.
 
 ## 2. Exit criteria evidence
-_CI evidence: filled in from the green run below._
+**GitHub CI [run 37975433813](https://github.com/homesvcplatform/platform/actions/runs/37975433813)** on code head `96ff362` of PR #12: every job succeeded (`supply-chain-selftest` skipped by design, TE-01). From the `verify` log: `pnpm install --frozen-lockfile` (lockfile up to date), guards, lint, typecheck, 0 boundary violations (224 modules), **359/359 unit tests** (new: `diagnosis.test.ts` 15, `quote.test.ts` 8, `margin.test.ts` 6, `money.test.ts` 6; jobs tests extended), squawk "0 issues in 38 files", **test:db 21 files / 284/284 tests** (new: `diagnosis.db.test.ts` 23, `quote-recorded.db.test.ts` 3, worker `relay.db.test.ts` 3, `invariants.db.test.ts` +5). The "Sensitive paths review" workflow fails as on every PR (it needs two human reviewers; not a required check under TE-03). Later commits on the branch change docs only.
+
+| Exit criterion | Evidence |
+|---|---|
+| INV-05 (version immutable once presented) | Gate 2 triggers re-run, plus as the api role: UPDATE / DELETE of quote items → 42501 (no grant), UPDATE of version totals → HS002, INSERT of an item into a presented version → HS002, snapshots unwritable (42501) |
+| INV-06 (latest PRESENTED version, the hash the customer saw) | Stale hash → 409 `QUOTE_CHANGED`; an old (WITHDRAWN) version → 409 with the latest version number; the approval trigger refuses a non-PRESENTED version or a different hash |
+| INV-07 (≤ 1 APPROVED version) | Two concurrent approvals → one 200, one 409, one decision row; an approval racing a new version → exactly one wins; a change order supersedes only the APPROVED version (D11: PRESENTED → SUPERSEDED refused, HS003) |
+| INV-08 (customer only, own channel) | Another customer → 404; a technician session → 404; app session evidence recorded; signed link needs the token and the OTP to the registered number (wrong code → `OTP_INVALID`, a used link → 404); ops-recorded channel `FEATURE_DISABLED` by default and, when enabled for the test, ≤ cap only |
+| INV-09 (bill ≤ approved + policy fees − unused material) | Completion bills approved total − unused material (+ waiting fees): 173 900 − 60 000 with one of two quoted thermostats used; property tests: line = round(qty × unit), totals = Σ signed lines |
+| INV-21 (snapshot at version creation, unchanged later) | Version references a `gate6-quote-1` snapshot (inputs / outputs); snapshots are append-only; change orders are priced with the approved version's card |
+| Change-order integration test (no work on new items before approval) | ADDITIONAL_FINDING → v2 PRESENTED → order CHANGE_PENDING → completion refused (409 `CHANGE_PENDING`); the TCP-2 recorder refuses usage while a change is pending and for an unapproved version; approval supersedes v1 and moves the order to v2 (history reason `QUOTE_APPROVED`); a further change rejected → v2 stays; completion bills v2 |
+| Separation-of-duties tests (G-9) | `quote-recorded.db.test.ts`: the diagnosis capturer can be neither recorder nor verifier, recorder ≠ verifier, verifier needs the permission and a fresh step-up, a recorded call and the read-back code are required; the decision row records all three ids (Gate 2 CHECK backs it) |
+| Pricing property tests (totals = Σ signed lines, rounding) | fast-check: totals = Σ signed lines = items − discount − credit + tax, amounts ≥ 0, credit ≤ visit fee, line = round half-up (equal to the exact decimal reference), deterministic; largest-remainder splits sum exactly; Model B and C fixtures |
+| Margin-warning hook from the simulator formulas | The pure formulas reproduce every row of the 1.1/06 §2 tables for Models A, B and C; the hook flags A S1–S3, B S4, C none among the model-dependent scenarios |
+
+Also covered: Q-A options (not-qualified technician → specialist only, `OPTION_UNAVAILABLE`), step-up above ₹3,000 (fixture), same-visit attach and its fallback (`VISIT_ENDED`), separate repair visit (materials confirmed before departure, arrival starts the order), partial repair (BLOCKED, D6), repair-order cancellation (visit fee, job CANCELLED), rejection and expiry (visit fee bill), no-repair checkout and the flagged auto-checkout, ops completion override (OPS_OVERRIDE_COMPLETION proof, ADMIN usage), event replay (one repair order, one `processed_events` row), the relay (per-aggregate order with two relays, dead letter after retries, wake-up via the Graphile runner < 5 s), the quote-version history (and HS031 without an actor context), link tokens never in logs.
+
+### 2a. Issues found and fixed by CI before green
+- Completing a repair visit before its disclosure window opened stored a close time before the open time (CHECK): as on the Gate 5 terminal path, a window that never opened now records no open time.
+- New columns (`diagnoses.draft_lines`, `outbox.attempts`, `outbox.last_attempt_at`) needed classification tags; the exact append-only list gained the quote-version history.
 
 ## 3. Security review notes
 - **Server-only prices:** clients send references and quantities; every price comes from the rate card / reference price; submission re-prices; the snapshot and version are immutable (triggers + grants: the api role can't update or delete items, and can't touch snapshots).
@@ -51,4 +70,4 @@ Unchanged from Gate 5 §5, plus the relay on the deployed worker / queue databas
 4. **Gate 1 and Gate 2 conditions** remain tracked.
 
 ## 7. Decision
-Proposed **PASS WITH CONDITIONS** once every PR #12 check is green. Approver: founder (on merge of PR #12). Gate 7 not started.
+Proposed **PASS WITH CONDITIONS**. Every PR #12 check is green on GitHub for code head `96ff362` (§2). Approver: founder (on merge of PR #12). Gate 7 not started.
