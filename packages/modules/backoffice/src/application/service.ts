@@ -248,7 +248,9 @@ export class BackofficeService {
       && (s['resource_id'] ?? null) === resourceId
       && (payloadHash === null ? storedHash === null : Buffer.isBuffer(storedHash) && constantTimeEqual(storedHash, payloadHash));
     if (!bound) throw new AppError('STEP_UP_REQUIRED');
-    await c.query(SQL.markUsed, [stepUpId, now]);
+    const used = await c.query(SQL.markUsed, [stepUpId, now, operation, actor.id, actor.sessionId,
+      new Date(now.getTime() - ADMIN_STEP_UP_MS), resourceId, payloadHash]);
+    if (used.rowCount !== 1) throw new AppError('STEP_UP_REQUIRED');
   }
 
   async #consumeChallenge(c: pg.ClientBase, actor: Actor, challengeId: string, purpose: 'REGISTRATION' | 'STEP_UP', now: Date): Promise<Row> {

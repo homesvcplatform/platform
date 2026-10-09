@@ -9,7 +9,7 @@ import { createEphemeralKeyring, createLocalTokenSigningKey } from '@hsp/adapter
 import { ManualClock, newId } from '@hsp/kernel';
 import { createLogger } from '@hsp/observability';
 import { hasPermission, MATRIX_COLUMNS, type Actor, type MatrixColumn } from '@hsp/policy';
-import { canonicalJson } from '@hsp/module-backoffice';
+import { BACKOFFICE_SQL, canonicalJson } from '@hsp/module-backoffice';
 import { MemoryRateLimitStore, sha256 } from '@hsp/security';
 import {
   createSoftAuthenticator, createTestDatabase, createTestIdp, generateMatrixCases, placeholderAction, type SoftAuthenticator, type TestDatabase,
@@ -315,6 +315,50 @@ describe('action-bound step-up (SR-03, 05 §2.5)', () => {
     expect(await grantCount(grantee)).toBe(1);
     const used = (await db.admin.query('SELECT used_at FROM backoffice.webauthn_challenges WHERE id = $1', [up.stepUpId])).rows[0];
     expect(used.used_at).not.toBeNull();
+  });
+
+  it('simultaneous uses of one step-up with no other lock involved: exactly one succeeds', async () => {
+    await sessions();
+    const up = await stepUp(checker, key, 'backoffice.passkey.register');
+    const results = await Promise.all([1, 2, 3, 4].map(() => req(checker, 'POST', '/admin/v1/passkeys/registration-options', { stepUpId: up.stepUpId })));
+    expect(results.filter((r) => r.status === 200)).toHaveLength(1);
+    for (const r of results.filter((x) => x.status !== 200)) expect(r.body).toMatchObject({ code: 'STEP_UP_REQUIRED' });
+  });
+
+  it('database: two concurrent transactions consuming the same step-up — exactly one UPDATE affects a row', async () => {
+    await sessions();
+    const up = await stepUp(checker, key, 'backoffice.passkey.register');
+    const row = (await db.admin.query('SELECT admin_user_id, session_id, verified_at FROM backoffice.webauthn_challenges WHERE id = $1', [up.stepUpId])).rows[0];
+    const params = [up.stepUpId, clock.now(), 'backoffice.passkey.register', row.admin_user_id, row.session_id,
+      new Date(clock.now().getTime() - 5 * 60_000), null, null];
+    const a = await pool.connect();
+    const b = await pool.connect();
+    try {
+      await a.query('BEGIN');
+      await b.query('BEGIN');
+      const first = await a.query(BACKOFFICE_SQL.markUsed, params);
+      const second = b.query(BACKOFFICE_SQL.markUsed, params); // blocks on A's row lock
+      await new Promise((r) => setTimeout(r, 200));
+      await a.query('COMMIT');
+      const secondResult = await second; // re-evaluated after A commits: used_at is no longer NULL
+      await b.query('COMMIT');
+      expect(first.rowCount).toBe(1);
+      expect(secondResult.rowCount).toBe(0);
+    } finally {
+      a.release();
+      b.release();
+    }
+    // Ineligible uses update nothing either: wrong operation, another session, too old.
+    const fresh = await stepUp(checker, key, 'backoffice.passkey.register');
+    const base = [fresh.stepUpId, clock.now(), 'backoffice.passkey.register', row.admin_user_id, row.session_id,
+      new Date(clock.now().getTime() - 5 * 60_000), null, null];
+    const tries = [
+      [...base.slice(0, 2), 'security.grant.decide', ...base.slice(3)],
+      [...base.slice(0, 4), randomUUID(), ...base.slice(5)],
+      [...base.slice(0, 5), new Date(clock.now().getTime() + 1_000), ...base.slice(6)],
+    ];
+    for (const t of tries) expect((await pool.query(BACKOFFICE_SQL.markUsed, t)).rowCount).toBe(0);
+    expect((await pool.query(BACKOFFICE_SQL.markUsed, base)).rowCount).toBe(1);
   });
 });
 

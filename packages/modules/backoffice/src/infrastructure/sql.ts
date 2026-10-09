@@ -25,7 +25,16 @@ export const SQL = {
                          verified_at, used_at
                     FROM backoffice.webauthn_challenges WHERE id = $1 FOR UPDATE`,
   markVerified: 'UPDATE backoffice.webauthn_challenges SET verified_at = $2 WHERE id = $1 AND verified_at IS NULL',
-  markUsed: 'UPDATE backoffice.webauthn_challenges SET used_at = $2 WHERE id = $1 AND used_at IS NULL',
+  /**
+   * Single-use consumption of a step-up. Every eligibility condition is re-checked in the UPDATE itself (not only in the
+   * preceding read), and the caller requires exactly one updated row: a concurrent or repeated use updates zero rows.
+   * $3 operation, $4 admin, $5 session, $6 earliest valid verified_at, $7 resource id, $8 payload hash.
+   */
+  markUsed: `UPDATE backoffice.webauthn_challenges SET used_at = $2
+              WHERE id = $1 AND purpose = 'STEP_UP' AND action = $3 AND admin_user_id = $4 AND session_id = $5
+                AND used_at IS NULL AND verified_at IS NOT NULL AND verified_at <= $2 AND verified_at >= $6
+                AND resource_id IS NOT DISTINCT FROM $7::uuid AND payload_hash IS NOT DISTINCT FROM $8::bytea
+            RETURNING id`,
   consumeChallenge: 'UPDATE backoffice.webauthn_challenges SET consumed_at = $2 WHERE id = $1',
   insertCredential: `INSERT INTO backoffice.admin_webauthn_credentials (id, admin_user_id, credential_id, public_key_spki, sign_count, backup_eligible, created_at)
                      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
