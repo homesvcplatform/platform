@@ -236,7 +236,7 @@ describe('role grants: maker-checker (05 §5.4 / §6, INV-19)', () => {
       req(s, 'POST', `/admin/v1/approvals/${id}/decision`, { decision, stepUpId });
     expect((await decide(maker, randomUUID())).body).toMatchObject({ code: 'FORBIDDEN' }); // maker can't check
     // The maker can't even start a step-up for its own request.
-    expect((await req(maker, 'POST', '/admin/v1/step-up/options', { operation: 'security.grant.decide', approvalRequestId: id })).body).toMatchObject({ code: 'FORBIDDEN' });
+    expect((await req(maker, 'POST', '/admin/v1/step-up/options', { operation: 'security.grant.decide', approvalRequestId: id, decision: 'APPROVE' })).body).toMatchObject({ code: 'FORBIDDEN' });
     expect((await decide(checker, randomUUID())).body).toMatchObject({ code: 'STEP_UP_REQUIRED' });
     expect((await req(checker, 'POST', `/admin/v1/approvals/${id}/decision`, { decision: 'APPROVE' })).body).toMatchObject({ code: 'VALIDATION_FAILED' });
     const up = await stepUp(checker, checkerKey, 'security.grant.decide', id);
