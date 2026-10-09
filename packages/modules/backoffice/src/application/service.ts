@@ -19,7 +19,8 @@ import {
   verifyJwt, verifyRegistration, WebAuthnError, type RateLimiter,
 } from '@hsp/security';
 import {
-  ADMIN_COOKIE, ADMIN_SESSION, APPROVAL_TTL_MS, FIRST_PASSKEY_WINDOW_MS, ADMIN_STEP_UP_MS, isPhishingResistant,
+  ADMIN_COOKIE, ADMIN_SESSION, APPROVAL_TTL_MS, FIRST_PASSKEY_WINDOW_MS, ADMIN_STEP_UP_MS, isPhishingResistant, isStepUpOperation,
+  passkeyCeremoniesAllowed, type StepUpOperation,
 } from '../domain/permissions.ts';
 import { SQL } from '../infrastructure/sql.ts';
 
@@ -42,6 +43,8 @@ export interface BackofficeDeps {
   readonly csrfKey: Buffer;
   readonly requestHashKey: Buffer;
   readonly allowedOrigins: readonly string[];
+  /** Deployment environment: passkey ceremonies are refused outside local / test until the WebAuthn review passes. */
+  readonly appEnv: string;
 }
 
 export interface AdminRequestMeta {
@@ -122,7 +125,9 @@ export class BackofficeService {
         return { error: new AppError('UNAUTHENTICATED') };
       }
       const adminId = admin['id'] as string;
-      // 05 §2.5: one concurrent session by default; a new login ends the old one.
+      // 05 §2.5: one concurrent session by default; a new login ends the old one. The admin row lock serialises
+      // concurrent logins, so the second one sees (and revokes) the first one's session.
+      await c.query(SQL.lockAdmin, [adminId]);
       const ended = (await c.query(SQL.revokeAdminSessions, [adminId, now, 'NEW_LOGIN'])).rows.length;
       const sessionId = newId();
       const secret = opaqueToken(32);
@@ -164,7 +169,6 @@ export class BackofficeService {
     await this.#d.pool.query(SQL.touchSession, [sessionId, now, new Date(now.getTime() + ADMIN_SESSION.idleMs)]);
     return {
       kind: 'ADMIN', id: adminId, sessionId, surface: 'ADMIN', permissions: await this.#authority(this.#d.pool, adminId, now),
-      ...(s['step_up_at'] ? { stepUpAt: s['step_up_at'] as Date } : {}),
     };
   }
 
@@ -197,25 +201,54 @@ export class BackofficeService {
 
   // ---------------------------------------------------------------- passkeys (SR-03)
 
-  async beginPasskeyRegistration(actor: Actor): Promise<{ challengeId: string; challenge: string; rpId: string }> {
+  #requirePasskeyCeremonies(): void {
+    if (!passkeyCeremoniesAllowed(this.#d.appEnv)) {
+      this.#d.logger.log('warn', 'security.passkeys_disabled', { appEnv: this.#d.appEnv });
+      throw new AppError('FORBIDDEN');
+    }
+  }
+
+  /** First passkey: only right after a fresh IdP login. Further passkeys: only with a step-up bound to this operation. */
+  async beginPasskeyRegistration(actor: Actor, stepUpId?: string): Promise<{ challengeId: string; challenge: string; rpId: string }> {
     this.#require(actor, 'backoffice.passkey.manage', {});
+    this.#requirePasskeyCeremonies();
     const now = this.#now();
     return withTransaction(this.#d.pool, async (c) => {
       const count = ((await c.query(SQL.credentialCount, [actor.id])).rows[0] as { n: number }).n;
-      const s = (await c.query(SQL.sessionForAuth, [actor.sessionId])).rows[0] as Row;
-      const freshLogin = now.getTime() - (s['created_at'] as Date).getTime() <= FIRST_PASSKEY_WINDOW_MS;
-      const steppedUp = actor.stepUpAt !== undefined && now.getTime() - actor.stepUpAt.getTime() <= ADMIN_STEP_UP_MS;
-      // First passkey: only right after a fresh IdP login. Further passkeys: only with a recent passkey step-up.
-      if (count === 0 ? !freshLogin : !steppedUp) throw new AppError('STEP_UP_REQUIRED');
-      return this.#challenge(c, actor, 'REGISTRATION', null, now);
+      if (count === 0) {
+        const s = (await c.query(SQL.sessionForAuth, [actor.sessionId])).rows[0] as Row;
+        if (now.getTime() - (s['created_at'] as Date).getTime() > FIRST_PASSKEY_WINDOW_MS) throw new AppError('STEP_UP_REQUIRED');
+      } else {
+        await this.#useStepUp(c, actor, stepUpId, 'backoffice.passkey.register', null, null, now);
+      }
+      return this.#challenge(c, actor, 'REGISTRATION', null, null, null, now);
     });
   }
 
-  async #challenge(c: pg.ClientBase, actor: Actor, purpose: 'REGISTRATION' | 'STEP_UP', action: string | null, now: Date) {
+  async #challenge(c: pg.ClientBase, actor: Actor, purpose: 'REGISTRATION' | 'STEP_UP', operation: StepUpOperation | null,
+    resourceId: string | null, payloadHash: Buffer | null, now: Date) {
     const challenge = opaqueToken(32);
     const challengeId = newId();
-    await c.query(SQL.insertChallenge, [challengeId, actor.id, actor.sessionId, purpose, sha256(challenge), action, new Date(now.getTime() + 5 * 60_000), now]);
+    await c.query(SQL.insertChallenge, [challengeId, actor.id, actor.sessionId, purpose, sha256(challenge), operation, resourceId, payloadHash,
+      new Date(now.getTime() + 5 * 60_000), now]);
     return { challengeId, challenge, rpId: this.#d.webauthn.rpId };
+  }
+
+  /**
+   * Consumes a verified step-up for exactly this operation (and, for decisions, this approval request and payload hash).
+   * Runs inside the transaction that performs the operation; the row lock makes concurrent reuse impossible.
+   */
+  async #useStepUp(c: pg.ClientBase, actor: Actor, stepUpId: string | undefined, operation: StepUpOperation, resourceId: string | null,
+    payloadHash: Buffer | null, now: Date): Promise<void> {
+    const s = stepUpId ? ((await c.query(SQL.lockChallenge, [stepUpId])).rows[0] as Row | undefined) : undefined;
+    const storedHash = s?.['payload_hash'];
+    const bound = s !== undefined && s['purpose'] === 'STEP_UP' && s['action'] === operation && s['admin_user_id'] === actor.id
+      && s['session_id'] === actor.sessionId && s['verified_at'] !== null && s['used_at'] === null
+      && (s['verified_at'] as Date) <= now && now.getTime() - (s['verified_at'] as Date).getTime() <= ADMIN_STEP_UP_MS
+      && (s['resource_id'] ?? null) === resourceId
+      && (payloadHash === null ? storedHash === null : Buffer.isBuffer(storedHash) && constantTimeEqual(storedHash, payloadHash));
+    if (!bound) throw new AppError('STEP_UP_REQUIRED');
+    await c.query(SQL.markUsed, [stepUpId, now]);
   }
 
   async #consumeChallenge(c: pg.ClientBase, actor: Actor, challengeId: string, purpose: 'REGISTRATION' | 'STEP_UP', now: Date): Promise<Row> {
@@ -228,6 +261,7 @@ export class BackofficeService {
 
   async finishPasskeyRegistration(actor: Actor, input: { challengeId: string; challenge: string; clientDataJSON: Buffer; attestationObject: Buffer }, meta: AdminRequestMeta): Promise<void> {
     this.#require(actor, 'backoffice.passkey.manage', {});
+    this.#requirePasskeyCeremonies();
     const now = this.#now();
     await withTransaction(this.#d.pool, async (c) => {
       const ch = await this.#consumeChallenge(c, actor, input.challengeId, 'REGISTRATION', now);
@@ -247,16 +281,34 @@ export class BackofficeService {
     this.#d.logger.log('warn', 'security.admin_passkey_added', { outcome: 'SUCCESS' });
   }
 
-  async beginStepUp(actor: Actor, action: string): Promise<{ challengeId: string; challenge: string; rpId: string }> {
+  /**
+   * Starts a step-up for one server-validated operation. For a grant decision the server binds the approval request and
+   * its stored payload hash, after checking that the actor may decide it; the client only selects the operation.
+   */
+  async beginStepUp(actor: Actor, input: { operation: unknown; approvalRequestId?: string | undefined }): Promise<{ challengeId: string; challenge: string; rpId: string }> {
     this.#require(actor, 'backoffice.passkey.manage', {});
-    if (!/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,4}$/.test(action)) throw new AppError('VALIDATION_FAILED');
-    return withTransaction(this.#d.pool, (c) => this.#challenge(c, actor, 'STEP_UP', action, this.#now()));
+    this.#requirePasskeyCeremonies();
+    const operation = input.operation;
+    if (!isStepUpOperation(operation)) throw new AppError('VALIDATION_FAILED', { fields: [{ path: 'operation', code: 'INVALID' }] });
+    const now = this.#now();
+    return withTransaction(this.#d.pool, async (c) => {
+      if (operation === 'backoffice.passkey.register') {
+        if (input.approvalRequestId !== undefined) throw new AppError('VALIDATION_FAILED');
+        return this.#challenge(c, actor, 'STEP_UP', operation, null, null, now);
+      }
+      const a = input.approvalRequestId ? ((await c.query(SQL.approval, [input.approvalRequestId])).rows[0] as Row | undefined) : undefined;
+      if (!a || a['action_type'] !== 'security.grant') throw new AppError('NOT_FOUND');
+      this.#require(actor, 'backoffice.grant.decide', { granteeId: a['resource_id'] as string, requesterId: a['requested_by_admin_id'] as string });
+      if (a['status'] !== 'PENDING' || (a['expires_at'] as Date) <= now) throw new AppError('INVALID_STATE');
+      return this.#challenge(c, actor, 'STEP_UP', operation, a['id'] as string, a['payload_hash'] as Buffer, now);
+    });
   }
 
-  /** WebAuthn assertion → session step-up timestamp (valid for high-risk actions for 5 minutes). */
+  /** WebAuthn assertion → a single-use authorisation for the bound operation, valid 5 minutes (`stepUpId`). */
   async finishStepUp(actor: Actor, input: { challengeId: string; challenge: string; credentialId: string; clientDataJSON: Buffer;
-    authenticatorData: Buffer; signature: Buffer }, meta: AdminRequestMeta): Promise<void> {
+    authenticatorData: Buffer; signature: Buffer }, meta: AdminRequestMeta): Promise<{ stepUpId: string }> {
     this.#require(actor, 'backoffice.passkey.manage', {});
+    this.#requirePasskeyCeremonies();
     const now = this.#now();
     const outcome = await withTransaction(this.#d.pool, async (c) => {
       const ch = await this.#consumeChallenge(c, actor, input.challengeId, 'STEP_UP', now);
@@ -273,7 +325,7 @@ export class BackofficeService {
       }
       if (cred && verified) {
         await c.query(SQL.updateCredential, [cred['id'], verified.signCount, now]);
-        await c.query(SQL.setStepUp, [actor.sessionId, now]);
+        await c.query(SQL.markVerified, [input.challengeId, now]);
       }
       await this.#audit(c, { actorType: 'ADMIN', actorId: actor.id ?? null, actorSessionId: actor.sessionId ?? null, action: 'admin.step_up',
         resourceType: 'backoffice.admin_session', resourceId: actor.sessionId ?? null, outcome: verified ? 'SUCCESS' : 'FAILED',
@@ -281,6 +333,7 @@ export class BackofficeService {
       return verified !== undefined;
     });
     if (!outcome) throw new AppError('UNAUTHENTICATED');
+    return { stepUpId: input.challengeId };
   }
 
   // ---------------------------------------------------------------- role grants (maker-checker)
@@ -306,8 +359,11 @@ export class BackofficeService {
       }
       if (start.kind === 'REPLAY') return { ...(start.body as { approvalRequestId: string }), replayed: true };
       const grantee = (await c.query(SQL.adminById, [input.adminUserId])).rows[0] as Row | undefined;
-      if (!grantee || grantee['status'] !== 'ACTIVE' || (await c.query(SQL.roleExists, [input.roleCode])).rows.length === 0) {
-        throw new AppError('VALIDATION_FAILED');
+      const role = (await c.query(SQL.role, [input.roleCode])).rows[0] as Row | undefined;
+      if (!grantee || grantee['status'] !== 'ACTIVE' || !role) throw new AppError('VALIDATION_FAILED');
+      // Global-only roles (security admin, finance, auditor) can't be granted per city (also enforced by a DB trigger).
+      if (role['global_only'] === true && input.scope.kind !== 'GLOBAL') {
+        throw new AppError('VALIDATION_FAILED', { fields: [{ path: 'scope', code: 'GLOBAL_ONLY_ROLE' }] });
       }
       const id = newId();
       await c.query(SQL.insertApproval, [id, input.adminUserId, JSON.stringify(payload), sha256(canonicalJson(payload)), actor.id, now,
@@ -319,8 +375,11 @@ export class BackofficeService {
     });
   }
 
-  /** Checker decision. APPROVE executes the grant once, from the stored payload, after re-checking its hash. */
-  async decideGrant(actor: Actor, approvalRequestId: string, decision: 'APPROVE' | 'REJECT', meta: AdminRequestMeta): Promise<void> {
+  /**
+   * Checker decision. Needs the passkey step-up bound to this approval request and its payload hash (consumed here, once).
+   * APPROVE executes the grant once, from the stored payload, after re-checking its hash.
+   */
+  async decideGrant(actor: Actor, approvalRequestId: string, decision: 'APPROVE' | 'REJECT', stepUpId: string | undefined, meta: AdminRequestMeta): Promise<void> {
     const now = this.#now();
     await withTransaction(this.#d.pool, async (c) => {
       const a = (await c.query(SQL.lockApproval, [approvalRequestId])).rows[0] as Row | undefined;
@@ -329,6 +388,7 @@ export class BackofficeService {
       if (a['status'] !== 'PENDING' || (a['expires_at'] as Date) <= now) throw new AppError('INVALID_STATE');
       const payload = a['payload'] as { adminUserId: string; roleCode: string; scope: Scope; expiresAt: string | null };
       if (!constantTimeEqual(sha256(canonicalJson(payload)), a['payload_hash'] as Buffer)) throw new AppError('INVALID_STATE');
+      await this.#useStepUp(c, actor, stepUpId, 'security.grant.decide', approvalRequestId, a['payload_hash'] as Buffer, now);
       await c.query(SQL.decideApproval, [approvalRequestId, decision === 'APPROVE' ? 'APPROVED' : 'REJECTED', actor.id, now]);
       if (decision === 'APPROVE') {
         await c.query(SQL.insertGrant, [newId(), payload.adminUserId, payload.roleCode, payload.scope.kind,

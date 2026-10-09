@@ -12,9 +12,9 @@ export type { DataClass, DekCache, EncryptionContext, FieldCrypto, KeyManagement
 export { assertKey, blindIndex, constantTimeEqual, hmacSha256, KeyMaterialError, logRef, MIN_KEY_BYTES, sha256 } from './hashing.ts';
 export { JwtError, localEs256Signer, signJwt, verifyJwt } from './jwt.ts';
 export type { JwtClaims, JwtErrorCode, JwtSigner, VerifyOptions } from './jwt.ts';
-export { createRateLimiter, MemoryRateLimitStore, RATE_RULES } from './rate-limit.ts';
+export { assertRateLimitStore, createRateLimiter, MemoryRateLimitStore, RATE_RULES, RateLimitConfigError } from './rate-limit.ts';
 export type { RateLimitCheck, RateLimiter, RateLimitRule, RateLimitStore } from './rate-limit.ts';
 export { CLIENT_IP_HEADER, csrfToken, resolveClientIp, signClientIp, verifyClientIpHeader, verifyCsrfToken } from './request-trust.ts';
 export type { InboundConnection } from './request-trust.ts';
-export { decodeCbor, verifyAssertion, verifyRegistration, WebAuthnError } from './webauthn.ts';
+export { CBOR_LIMITS, decodeCbor, decodeCborExact, verifyAssertion, verifyRegistration, WebAuthnError } from './webauthn.ts';
 export type { AssertionInput, RegisteredCredential, RegistrationInput } from './webauthn.ts';

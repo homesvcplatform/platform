@@ -11,11 +11,15 @@ export interface RateLimitRule {
 }
 
 export interface RateLimitStore {
+  /** True only for a store shared by every instance with atomic updates (Valkey). Deployed roles require it. */
+  readonly shared: boolean;
   /** Atomically takes one token from bucket `key` under `rule`. */
   take(key: string, rule: RateLimitRule, now: Date): Promise<{ readonly allowed: boolean; readonly retryAfterSec: number }>;
 }
 
+/** Per-process buckets: correct only for a single process. Allowed only in `local` and `test` (CI). */
 export class MemoryRateLimitStore implements RateLimitStore {
+  readonly shared = false;
   readonly #buckets = new Map<string, { tokens: number; at: number }>();
 
   async take(key: string, rule: RateLimitRule, now: Date) {
@@ -41,6 +45,25 @@ export interface RateLimitCheck {
 export interface RateLimiter {
   /** Consumes from every applicable bucket; denied if any bucket is empty. */
   consume(checks: readonly RateLimitCheck[], now: Date): Promise<{ readonly allowed: boolean; readonly retryAfterSec: number; readonly limitedBy?: string }>;
+}
+
+export class RateLimitConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RateLimitConfigError';
+  }
+}
+
+/**
+ * Fails closed: a store is mandatory, and outside `local` / `test` it must be shared and atomic across instances. An
+ * in-memory store in a deployed role would let every instance (and every restart) grant a fresh budget.
+ */
+export function assertRateLimitStore(store: RateLimitStore | undefined, appEnv: string): RateLimitStore {
+  if (!store) throw new RateLimitConfigError('a rate-limit store is required');
+  if (!store.shared && appEnv !== 'local' && appEnv !== 'test') {
+    throw new RateLimitConfigError(`APP_ENV=${appEnv} requires a shared, atomic rate-limit store (in-memory is local / test only)`);
+  }
+  return store;
 }
 
 export function createRateLimiter(store: RateLimitStore): RateLimiter {

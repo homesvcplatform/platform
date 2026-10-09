@@ -27,7 +27,7 @@ export interface ApiHarness {
   /** api role composition. */
   readonly api: ApiComposition;
   /** Other process roles over the same database, KMS and keys. */
-  role(role: 'app_voice' | 'app_worker', kmsRole: string): Promise<ApiComposition>;
+  role(role: 'app_api' | 'app_voice' | 'app_worker', kmsRole: string): Promise<ApiComposition>;
   /** Technicians eligible for the technician app (stands in for the workforce module). */
   readonly technicians: Set<string>;
   close(): Promise<void>;
@@ -53,7 +53,7 @@ export async function createApiHarness(opts: { rateLimitStore?: RateLimitStore; 
     return composeApi({
       pool, clock, logger, kms: keyring.forRole(kmsRole), tokenSigner: signing.signer, tokenVerificationKeys: signing.publicKeys, issuer: ISSUER,
       keys, otpSender: sms.sender, eligibility: { isEligible: async (userId, surface) => surface === 'CUSTOMER_WEB' || technicians.has(userId) },
-      botVerifier: { verify: async (t) => bot.has(t) }, phonePolicy: 'RESERVED_TEST_RANGE_ONLY', allowedWebOrigins: [ORIGIN], rateLimitStore,
+      botVerifier: { verify: async (t) => bot.has(t) }, phonePolicy: 'RESERVED_TEST_RANGE_ONLY', allowedWebOrigins: [ORIGIN], rateLimitStore, appEnv: 'test',
     });
   };
   const api = await build('app_api', 'api');

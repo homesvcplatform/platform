@@ -84,8 +84,11 @@ export function createBackofficeHttp(service: BackofficeService): (req: AdminHtt
         case 'DELETE /admin/v1/session':
           await service.logout(await actorOf(req), req.meta);
           return json(204);
-        case 'POST /admin/v1/passkeys/registration-options':
-          return json(200, await service.beginPasskeyRegistration(await actorOf(req)));
+        case 'POST /admin/v1/passkeys/registration-options': {
+          const actor = await actorOf(req);
+          const body = parse(contracts.passkeyRegistrationOptions, req.body ?? {});
+          return json(200, await service.beginPasskeyRegistration(actor, body.stepUpId));
+        }
         case 'POST /admin/v1/passkeys': {
           const body = parse(contracts.passkeyRegistrationFinish, req.body);
           await service.finishPasskeyRegistration(await actorOf(req), { challengeId: body.challengeId, challenge: challengeOf(body.clientDataJSON),
@@ -93,15 +96,16 @@ export function createBackofficeHttp(service: BackofficeService): (req: AdminHtt
           return json(201);
         }
         case 'POST /admin/v1/step-up/options': {
-          const action = (req.body as { action?: unknown } | undefined)?.action;
-          return json(200, await service.beginStepUp(await actorOf(req), typeof action === 'string' ? action : ''));
+          const actor = await actorOf(req);
+          const body = parse(contracts.stepUpOptions, req.body);
+          return json(200, await service.beginStepUp(actor, { operation: body.operation, approvalRequestId: body.approvalRequestId }));
         }
         case 'POST /admin/v1/step-up': {
           const body = parse(contracts.passkeyAssertion, req.body);
-          await service.finishStepUp(await actorOf(req), { challengeId: body.challengeId, challenge: challengeOf(body.clientDataJSON),
+          const r = await service.finishStepUp(await actorOf(req), { challengeId: body.challengeId, challenge: challengeOf(body.clientDataJSON),
             credentialId: body.credentialId, clientDataJSON: b(body.clientDataJSON), authenticatorData: b(body.authenticatorData),
             signature: b(body.signature) }, req.meta);
-          return json(204);
+          return json(200, r);
         }
         case 'POST /admin/v1/grants': {
           const actor = await actorOf(req);
@@ -113,7 +117,7 @@ export function createBackofficeHttp(service: BackofficeService): (req: AdminHtt
         case 'POST /admin/v1/approvals/:approvalRequestId/decision': {
           const id = /\/admin\/v1\/approvals\/([0-9a-f-]{36})\/decision$/.exec(req.path)?.[1] ?? '';
           const body = parse(contracts.approvalDecision, req.body);
-          await service.decideGrant(await actorOf(req), id, body.decision, req.meta);
+          await service.decideGrant(await actorOf(req), id, body.decision, body.stepUpId, req.meta);
           return json(204);
         }
         default:

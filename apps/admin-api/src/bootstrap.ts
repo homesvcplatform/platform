@@ -3,13 +3,13 @@
 // "Revoke sessions"). One policy registry with default deny; every endpoint must declare its policy (B11 / B12).
 import type { KeyObject } from 'node:crypto';
 import type pg from 'pg';
-import type { Clock } from '@hsp/kernel';
+import type { AppEnvironment, Clock } from '@hsp/kernel';
 import { createBackofficeHttp, backofficeEndpoints } from '@hsp/module-backoffice/http';
 import { BackofficeService, registerBackofficePolicies, type IdpConfig } from '@hsp/module-backoffice';
 import { IdentityService, registerIdentityPolicies, type IdentityKeys } from '@hsp/module-identity';
 import type { Logger } from '@hsp/observability';
 import { assertEndpointRegistry, PolicyRegistry } from '@hsp/policy';
-import { createDekCache, createRateLimiter, MemoryRateLimitStore, type JwtSigner, type KeyManagementPort, type RateLimitStore } from '@hsp/security';
+import { assertRateLimitStore, createDekCache, createRateLimiter, type JwtSigner, type KeyManagementPort, type RateLimitStore } from '@hsp/security';
 
 export interface AdminApiCompositionOptions {
   readonly pool: pg.Pool;
@@ -20,7 +20,9 @@ export interface AdminApiCompositionOptions {
   readonly csrfKey: Buffer;
   readonly requestHashKey: Buffer;
   readonly allowedOrigins: readonly string[];
-  readonly rateLimitStore?: RateLimitStore;
+  readonly appEnv: AppEnvironment;
+  /** Required. Deployed environments need the shared atomic (Valkey) store; `MemoryRateLimitStore` is local / test only. */
+  readonly rateLimitStore: RateLimitStore | undefined;
   /** Identity facade (admin actions on user sessions): same KMS / keys as the api, admin-api role grants. */
   readonly identity: {
     readonly kms: KeyManagementPort;
@@ -40,10 +42,10 @@ export function composeAdminApi(o: AdminApiCompositionOptions) {
   registerBackofficePolicies(policies);
   registerIdentityPolicies(policies);
   assertEndpointRegistry(backofficeEndpoints, policies);
-  const rateLimiter = createRateLimiter(o.rateLimitStore ?? new MemoryRateLimitStore());
+  const rateLimiter = createRateLimiter(assertRateLimitStore(o.rateLimitStore, o.appEnv));
   const backoffice = new BackofficeService({
     pool: o.pool, clock: o.clock, logger: o.logger, policies, rateLimiter, idp: o.idp, webauthn: o.webauthn, csrfKey: o.csrfKey,
-    requestHashKey: o.requestHashKey, allowedOrigins: o.allowedOrigins,
+    requestHashKey: o.requestHashKey, allowedOrigins: o.allowedOrigins, appEnv: o.appEnv,
   });
   const identity = new IdentityService({
     pool: o.pool, clock: o.clock, kms: o.identity.kms, dekCache: createDekCache(), keys: o.identity.keys, tokenSigner: o.identity.tokenSigner,

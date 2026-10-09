@@ -48,10 +48,27 @@ squawk lock-rule waivers on the empty `subject_keys` primary-key change; a JWT-s
 ## 3. Security review notes
 - New threat surface is limited to framework-neutral handlers; no endpoint is served yet (ADR-024 #1).
 - The audit chain serialises audited commits per month (head lock); acceptable at pilot volume.
-- After an erasure, another process may decrypt the subject's data for up to 5 minutes from its DEK cache (SR-06 bound). Tested.
+- After an erasure, a process that already holds the subject's data key in its cache may still decrypt for up to 5 minutes (SR-06 bound); a process with a cold cache can't decrypt at all. Erasure does not revoke other processes' caches immediately. Tested across independent instances (review fix R6).
 - Identity users are created at OTP request (ADR-024 #6); never-verified rows need the retention job.
-- **The WebAuthn CBOR decoder is custom code without an independent security review** (ADR-024 #2). It is tested only against the software authenticator and malformed-input cases; it must pass a scoped security review before any real admin passkey is used (§6 condition 2).
+- **The WebAuthn CBOR decoder is custom code without an independent security review** (ADR-024 #2). Hardened after review finding R4 and tested against the software authenticator and malformed-input cases, but **not reviewed**: passkey ceremonies are refused outside `local` / `test` in code until a scoped security review passes (§6 condition 2).
 - The voice role has no DB grant on `identity.subject_keys`, so IVR can't reveal contact data yet (needed with the IVR gates; a grant migration then).
+
+### 3a. Review fixes (2026-10-09)
+Two independent AI review reports were verified finding by finding (ADR-024 R1–R6).
+
+**Confirmed defects, fixed and tested:**
+- R1 step-up was session-wide and its action label client-chosen → now bound to a server-validated operation, the approval request and its payload hash, consumed once in the decision transaction.
+- R2 a city-only grant of `security.grant` could authorise global security administration → global-scope checks + global-only roles (API + DB trigger).
+- R3 both compositions defaulted to the in-memory rate limiter → fail closed outside `local` / `test`.
+- R5 concurrent logins could leave two active admin sessions → logins serialised per admin.
+
+**Hardening (weakness, no exploit shown):** R4 CBOR decoder now rejects non-minimal encodings and enforces strict UTF-8, duplicate-key, size, item and depth limits; it remains unreviewed and disabled outside `local` / `test`.
+
+**Accepted by design, documented:** R6 the ≤ 5 min DEK-cache window after erasure.
+
+**Deployment-only (unchanged, §5):** the shared atomic (Valkey) rate-limit store itself, real KMS policies, mTLS.
+
+**Repository control (owner action):** the live `main` ruleset (`main-protection-interim`, TE-03) requires 0 approvals and does **not** list `two-reviewers-for-sensitive-paths` as a required check. That is the documented TE-03 interim state for a single-member organisation (making it required now would block every merge, since authors can't approve their own PRs). The intended final ruleset (`.github/rulesets/main-protection.json`) does require it with 1 approval and code-owner review. Owner action, once a second human reviewer exists: apply the final ruleset (TE-03 removal). Not changed here: no admin access from this environment, and changing it is the owner's decision.
 
 ## 4. Tech debt register delta
 | Item | Due |
@@ -69,10 +86,10 @@ Real KMS key policies per data class and per role (`kms-local` enforces the same
 
 ## 6. Conditions (why PASS WITH CONDITIONS)
 1. **ADR-024 acceptance**, including the **open item #1** (HTTP framework vs type stripping), decided before the first served endpoint.
-2. **Scoped security review of the custom WebAuthn CBOR decoder and passkey verification** (ADR-024 #2) **before any real admin passkey is registered or used.** Not done; Gate 3 has used test authenticators only.
-3. **AWS-dependent checks** (§5), recorded when AWS resumes (TE-02 removal condition, amended).
+2. **Scoped security review of the custom WebAuthn CBOR decoder and passkey verification** (ADR-024 #2, hardened per R4) **before any real admin passkey is registered or used.** Not done; Gate 3 has used test authenticators only, and the code refuses passkey ceremonies outside `local` / `test` until the review outcome is recorded.
+3. **AWS-dependent checks** (§5), recorded when AWS resumes (TE-02 removal condition, amended), including the shared atomic (Valkey) rate-limit store that deployed compositions now require.
 4. **SR-02 browser-storage E2E** (no tokens in localStorage / sessionStorage / IndexedDB) and the cookie-flag check in a real browser run with the PWA (Gate 8); Gate 3 proves it at the API level (no token in any browser-surface response).
-5. Gate 1 and Gate 2 conditions are unchanged.
+5. Gate 1 and Gate 2 conditions are unchanged, including TE-03: `two-reviewers-for-sensitive-paths` becomes a required check only with the final ruleset (owner action, §3a).
 
 ## 7. Decision
 **PASS WITH CONDITIONS**. Every PR #6 check is green on GitHub (§2). Approver: founder (on merge of PR #6). Gate 4 not started.

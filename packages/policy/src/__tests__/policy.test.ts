@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  ALLOW, assertEndpointRegistry, AUTHZ_MATRIX, deny, EndpointRegistryError, hasPermission, MATRIX_COLUMNS, PolicyRegistry,
+  ALLOW, assertEndpointRegistry, AUTHZ_MATRIX, deny, EndpointRegistryError, hasGlobalPermission, hasPermission, MATRIX_COLUMNS, PolicyRegistry,
   PolicyRegistryError, recentStepUp, type Actor, type DecisionRecord,
 } from '../index.ts';
 
@@ -39,6 +39,16 @@ describe('policy registry', () => {
     expect(hasPermission(admin, 'pii.reveal.address', 'any')).toBe(true);
     expect(hasPermission(admin, 'pii.export')).toBe(false);
     expect(hasPermission({ ...customer, permissions: admin.permissions ?? new Map() }, 'jobs.read')).toBe(false);
+  });
+
+  it('hasGlobalPermission accepts only GLOBAL scopes (hasPermission without a city accepts any scope)', () => {
+    const admin: Actor = { kind: 'ADMIN', id: 'a2', permissions: new Map([
+      ['security.grant', [{ kind: 'CITIES', cityIds: ['knl'] }]], ['audit.read', [{ kind: 'GLOBAL' }]], ['pii.*', [{ kind: 'GLOBAL' }]]]) };
+    expect(hasPermission(admin, 'security.grant')).toBe(true); // why security checks must not use it
+    expect(hasGlobalPermission(admin, 'security.grant')).toBe(false);
+    expect(hasGlobalPermission(admin, 'audit.read')).toBe(true);
+    expect(hasGlobalPermission(admin, 'pii.reveal.phone')).toBe(true);
+    expect(hasGlobalPermission(customer, 'audit.read')).toBe(false);
   });
 
   it('step-up freshness', () => {

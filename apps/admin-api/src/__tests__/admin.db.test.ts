@@ -9,6 +9,8 @@ import { createEphemeralKeyring, createLocalTokenSigningKey } from '@hsp/adapter
 import { ManualClock, newId } from '@hsp/kernel';
 import { createLogger } from '@hsp/observability';
 import { hasPermission, MATRIX_COLUMNS, type Actor, type MatrixColumn } from '@hsp/policy';
+import { canonicalJson } from '@hsp/module-backoffice';
+import { MemoryRateLimitStore, sha256 } from '@hsp/security';
 import {
   createSoftAuthenticator, createTestDatabase, createTestIdp, generateMatrixCases, placeholderAction, type SoftAuthenticator, type TestDatabase,
 } from '@hsp/testing';
@@ -63,18 +65,22 @@ const req = (s: AdminSession, method: string, path: string, body?: unknown, extr
   headers: { 'x-proxy-assertion': s.assertion, cookie: s.cookie, origin: ORIGIN, 'x-csrf-token': s.csrf, ...extra },
 });
 
-async function stepUp(s: AdminSession, authenticator: SoftAuthenticator, action = 'security.grant.approve') {
-  const opt = await req(s, 'POST', '/admin/v1/step-up/options', { action });
+type Operation = 'security.grant.decide' | 'backoffice.passkey.register';
+
+/** Passkey step-up for one operation (and approval request). Returns the response and the single-use `stepUpId`. */
+async function stepUp(s: AdminSession, authenticator: SoftAuthenticator, operation: Operation, approvalRequestId?: string) {
+  const opt = await req(s, 'POST', '/admin/v1/step-up/options', { operation, ...(approvalRequestId ? { approvalRequestId } : {}) });
   expect(opt.status, JSON.stringify(opt.body)).toBe(200);
   const { challengeId, challenge } = opt.body as { challengeId: string; challenge: string };
   const a = authenticator.assert(challenge);
-  return req(s, 'POST', '/admin/v1/step-up', { challengeId, credentialId: a.credentialId, clientDataJSON: a.clientDataJSON.toString('base64url'),
+  const res = await req(s, 'POST', '/admin/v1/step-up', { challengeId, credentialId: a.credentialId, clientDataJSON: a.clientDataJSON.toString('base64url'),
     authenticatorData: a.authenticatorData.toString('base64url'), signature: a.signature.toString('base64url') });
+  return { res, stepUpId: (res.body as { stepUpId?: string } | undefined)?.stepUpId ?? '' };
 }
 
-async function registerPasskey(s: AdminSession): Promise<SoftAuthenticator> {
+async function registerPasskey(s: AdminSession, stepUpId?: string): Promise<SoftAuthenticator> {
   const authenticator = createSoftAuthenticator(RP_ID, ORIGIN);
-  const opt = await req(s, 'POST', '/admin/v1/passkeys/registration-options', {});
+  const opt = await req(s, 'POST', '/admin/v1/passkeys/registration-options', stepUpId ? { stepUpId } : {});
   expect(opt.status, JSON.stringify(opt.body)).toBe(200);
   const { challengeId, challenge } = opt.body as { challengeId: string; challenge: string };
   const reg = authenticator.register(challenge);
@@ -92,6 +98,7 @@ beforeAll(async () => {
   app = composeAdminApi({
     pool, clock, logger: createLogger('hsp-admin-test', 'debug', (l) => logs.push(l), () => clock.now()), idp: idp.config,
     webauthn: { rpId: RP_ID, origin: ORIGIN }, csrfKey: randomBytes(32), requestHashKey: randomBytes(32), allowedOrigins: [ORIGIN],
+    appEnv: 'test', rateLimitStore: new MemoryRateLimitStore(),
     identity: { kms: createEphemeralKeyring(env).forRole('admin-api'), keys: { otpPepper: randomBytes(32), blindIndexPepper: randomBytes(32),
       refreshRotationKey: randomBytes(32), csrfKey: randomBytes(32), requestHashKey: randomBytes(32) }, tokenSigner: signing.signer,
       tokenVerificationKeys: signing.publicKeys, issuer: 'https://auth.test.invalid' },
@@ -125,7 +132,7 @@ describe('admin SSO and sessions (05 §2.5)', () => {
   it('every request needs both the proxy assertion and the admin session; one concurrent session; CSRF on mutations', async () => {
     const first = await login('sec-b');
     const second = await login('sec-b');
-    const body = { action: 'security.grant.approve' };
+    const body = { operation: 'backoffice.passkey.register' };
     expect((await req(first, 'POST', '/admin/v1/step-up/options', body)).status).toBe(401); // ended by the new login
     expect((await req(second, 'POST', '/admin/v1/step-up/options', body, { 'x-proxy-assertion': '' })).status).toBe(401);
     const other = await idp.mint('sec-a', { now: clock.now() });
@@ -139,16 +146,21 @@ describe('admin SSO and sessions (05 §2.5)', () => {
 });
 
 describe('passkeys (SR-03)', () => {
-  it('registers the first passkey right after login, then requires a passkey step-up for more; step-up assertions are verified', async () => {
+  it('registers the first passkey right after login, then requires a step-up bound to passkey registration (single use); assertions are verified', async () => {
     const s = await login('sec-c');
     const key = await registerPasskey(s);
-    // A second passkey needs a recent step-up.
+    // A second passkey needs a step-up bound to this operation.
     expect((await req(s, 'POST', '/admin/v1/passkeys/registration-options', {})).body).toMatchObject({ code: 'STEP_UP_REQUIRED' });
-    expect((await stepUp(s, key)).status).toBe(204);
-    expect((await req(s, 'POST', '/admin/v1/passkeys/registration-options', {})).status).toBe(200);
+    const up = await stepUp(s, key, 'backoffice.passkey.register');
+    expect(up.res.status).toBe(200);
+    expect((await req(s, 'POST', '/admin/v1/passkeys/registration-options', { stepUpId: up.stepUpId })).status).toBe(200);
+    expect((await req(s, 'POST', '/admin/v1/passkeys/registration-options', { stepUpId: up.stepUpId })).body).toMatchObject({ code: 'STEP_UP_REQUIRED' }); // used
+    // Only server-defined operations can be requested.
+    expect((await req(s, 'POST', '/admin/v1/step-up/options', { operation: 'security.grant.approve' })).body).toMatchObject({ code: 'VALIDATION_FAILED' });
+    expect((await req(s, 'POST', '/admin/v1/step-up/options', { operation: 'admin.anything' })).body).toMatchObject({ code: 'VALIDATION_FAILED' });
     // A different authenticator, a replayed challenge or a wrong origin are refused.
-    expect((await stepUp(s, createSoftAuthenticator(RP_ID, ORIGIN))).status).toBe(401);
-    const opt = await req(s, 'POST', '/admin/v1/step-up/options', { action: 'security.grant.approve' });
+    expect((await stepUp(s, createSoftAuthenticator(RP_ID, ORIGIN), 'backoffice.passkey.register')).res.status).toBe(401);
+    const opt = await req(s, 'POST', '/admin/v1/step-up/options', { operation: 'backoffice.passkey.register' });
     const { challengeId, challenge } = opt.body as { challengeId: string; challenge: string };
     const bad = key.assert(challenge, { origin: 'https://evil.invalid' });
     const send = (a: ReturnType<SoftAuthenticator['assert']>) => req(s, 'POST', '/admin/v1/step-up', { challengeId, credentialId: a.credentialId,
@@ -176,12 +188,17 @@ describe('role grants: maker-checker (05 §5.4 / §6, INV-19)', () => {
     const requested = await req(maker, 'POST', '/admin/v1/grants', grant, { 'idempotency-key': randomUUID() });
     expect(requested.status, JSON.stringify(requested.body)).toBe(202);
     const id = (requested.body as { approvalRequestId: string }).approvalRequestId;
-    const decide = (s: AdminSession, decision = 'APPROVE') => req(s, 'POST', `/admin/v1/approvals/${id}/decision`, { decision });
-    expect((await decide(maker)).body).toMatchObject({ code: 'FORBIDDEN' }); // maker can't check
-    expect((await decide(checker)).body).toMatchObject({ code: 'STEP_UP_REQUIRED' });
-    expect((await stepUp(checker, checkerKey)).status).toBe(204);
-    expect((await decide(checker)).status).toBe(204);
-    expect((await decide(checker)).body).toMatchObject({ code: 'INVALID_STATE' }); // executed exactly once
+    const decide = (s: AdminSession, stepUpId: string, decision = 'APPROVE') =>
+      req(s, 'POST', `/admin/v1/approvals/${id}/decision`, { decision, stepUpId });
+    expect((await decide(maker, randomUUID())).body).toMatchObject({ code: 'FORBIDDEN' }); // maker can't check
+    // The maker can't even start a step-up for its own request.
+    expect((await req(maker, 'POST', '/admin/v1/step-up/options', { operation: 'security.grant.decide', approvalRequestId: id })).body).toMatchObject({ code: 'FORBIDDEN' });
+    expect((await decide(checker, randomUUID())).body).toMatchObject({ code: 'STEP_UP_REQUIRED' });
+    expect((await req(checker, 'POST', `/admin/v1/approvals/${id}/decision`, { decision: 'APPROVE' })).body).toMatchObject({ code: 'VALIDATION_FAILED' });
+    const up = await stepUp(checker, checkerKey, 'security.grant.decide', id);
+    expect(up.res.status).toBe(200);
+    expect((await decide(checker, up.stepUpId)).status).toBe(204);
+    expect((await decide(checker, up.stepUpId)).body).toMatchObject({ code: 'INVALID_STATE' }); // executed exactly once
     const row = (await db.admin.query('SELECT status FROM backoffice.approval_requests WHERE id = $1', [id])).rows[0];
     expect(row.status).toBe('EXECUTED');
     const auditor = await login('auditor-x');
@@ -198,8 +215,9 @@ describe('role grants: maker-checker (05 §5.4 / §6, INV-19)', () => {
     await db.migrator.query(`UPDATE backoffice.approval_requests SET payload = jsonb_set(payload, '{roleCode}', '"SECURITY_ADMIN"') WHERE id = $1`, [id]);
     const checker = await login('sec-b');
     if (!checkerKey) throw new Error('the previous test registers the checker passkey');
-    expect((await stepUp(checker, checkerKey)).status).toBe(204);
-    const out = await req(checker, 'POST', `/admin/v1/approvals/${id}/decision`, { decision: 'APPROVE' });
+    const up = await stepUp(checker, checkerKey, 'security.grant.decide', id);
+    expect(up.res.status).toBe(200);
+    const out = await req(checker, 'POST', `/admin/v1/approvals/${id}/decision`, { decision: 'APPROVE', stepUpId: up.stepUpId });
     expect(out.body).toMatchObject({ code: 'INVALID_STATE' });
     const grants = (await db.admin.query('SELECT count(*)::int AS n FROM backoffice.admin_grants WHERE admin_user_id = $1', [admins['nobody']])).rows[0];
     expect(grants.n).toBe(0);
@@ -217,6 +235,138 @@ describe('role grants: maker-checker (05 §5.4 / §6, INV-19)', () => {
     await expect(db.migrator.query(
       `INSERT INTO backoffice.admin_grants (id, admin_user_id, role_code, scope_kind, granted_by_admin_id, approved_by_admin_id, approval_request_id)
        VALUES ($1, $2, 'AUDITOR', 'GLOBAL', $3, $2, $4)`, [newId(), admins['nobody'], admins['sec-a'], approval])).rejects.toMatchObject({ code: '23514' });
+  });
+});
+
+describe('action-bound step-up (SR-03, 05 §2.5)', () => {
+  const newRequest = async (maker: AdminSession, roleCode = 'AUDITOR') => {
+    const grantee = await seedAdmin(`bound-${randomUUID().slice(0, 8)}`);
+    const r = await req(maker, 'POST', '/admin/v1/grants', { adminUserId: grantee, roleCode, scope: { kind: 'GLOBAL' } }, { 'idempotency-key': randomUUID() });
+    expect(r.status, JSON.stringify(r.body)).toBe(202);
+    return { id: (r.body as { approvalRequestId: string }).approvalRequestId, grantee };
+  };
+  const decide = (s: AdminSession, id: string, stepUpId: string) => req(s, 'POST', `/admin/v1/approvals/${id}/decision`, { decision: 'APPROVE', stepUpId });
+  const grantCount = async (grantee: string) =>
+    ((await db.admin.query('SELECT count(*)::int AS n FROM backoffice.admin_grants WHERE admin_user_id = $1', [grantee])).rows[0].n as number);
+  let maker: AdminSession;
+  let checker: AdminSession;
+  let key: SoftAuthenticator;
+  beforeAll(async () => {
+    if (!checkerKey) throw new Error('the maker-checker test registers the checker passkey');
+    key = checkerKey;
+  });
+  const sessions = async () => {
+    maker = await login('sec-a');
+    checker = await login('sec-b');
+  };
+
+  it('a step-up for another operation can not authorise a decision, and vice versa', async () => {
+    await sessions();
+    const { id, grantee } = await newRequest(maker);
+    const other = await stepUp(checker, key, 'backoffice.passkey.register');
+    expect((await decide(checker, id, other.stepUpId)).body).toMatchObject({ code: 'STEP_UP_REQUIRED' });
+    const forDecision = await stepUp(checker, key, 'security.grant.decide', id);
+    expect((await req(checker, 'POST', '/admin/v1/passkeys/registration-options', { stepUpId: forDecision.stepUpId })).body).toMatchObject({ code: 'STEP_UP_REQUIRED' });
+    expect(await grantCount(grantee)).toBe(0);
+  });
+
+  it('a step-up bound to one approval request can not approve another', async () => {
+    await sessions();
+    const a = await newRequest(maker);
+    const b = await newRequest(maker);
+    const forA = await stepUp(checker, key, 'security.grant.decide', a.id);
+    expect((await decide(checker, b.id, forA.stepUpId)).body).toMatchObject({ code: 'STEP_UP_REQUIRED' });
+    expect(await grantCount(b.grantee)).toBe(0);
+    expect((await decide(checker, a.id, forA.stepUpId)).status).toBe(204); // still valid for its own request
+  });
+
+  it('a payload changed after the step-up (consistently re-hashed) invalidates it', async () => {
+    await sessions();
+    const { id, grantee } = await newRequest(maker);
+    const up = await stepUp(checker, key, 'security.grant.decide', id);
+    const changed = { adminUserId: grantee, roleCode: 'FINANCE', scope: { kind: 'GLOBAL' }, expiresAt: null };
+    await db.migrator.query('UPDATE backoffice.approval_requests SET payload = $2, payload_hash = $3 WHERE id = $1',
+      [id, JSON.stringify(changed), sha256(canonicalJson(changed))]);
+    expect((await decide(checker, id, up.stepUpId)).body).toMatchObject({ code: 'STEP_UP_REQUIRED' });
+    expect(await grantCount(grantee)).toBe(0);
+  });
+
+  it('expires 5 minutes after the assertion, and belongs to the session that performed it', async () => {
+    await sessions();
+    const { id, grantee } = await newRequest(maker);
+    const up = await stepUp(checker, key, 'security.grant.decide', id);
+    const relogin = await login('sec-b'); // the new session can't use the old session's step-up
+    checker = relogin;
+    expect((await decide(checker, id, up.stepUpId)).body).toMatchObject({ code: 'STEP_UP_REQUIRED' });
+    const fresh = await stepUp(checker, key, 'security.grant.decide', id);
+    clock.advance(5 * 60_000 + 1_000);
+    const late = { ...checker, assertion: await idp.mint('sec-b', { now: clock.now() }) };
+    expect((await decide(late, id, fresh.stepUpId)).body).toMatchObject({ code: 'STEP_UP_REQUIRED' });
+    expect(await grantCount(grantee)).toBe(0);
+  });
+
+  it('concurrent decisions with one step-up execute the grant exactly once', async () => {
+    await sessions();
+    const { id, grantee } = await newRequest(maker);
+    const up = await stepUp(checker, key, 'security.grant.decide', id);
+    const results = await Promise.all([1, 2, 3].map(() => decide(checker, id, up.stepUpId)));
+    expect(results.filter((r) => r.status === 204)).toHaveLength(1);
+    for (const r of results.filter((x) => x.status !== 204)) expect(['INVALID_STATE', 'STEP_UP_REQUIRED']).toContain((r.body as { code: string }).code);
+    expect(await grantCount(grantee)).toBe(1);
+    const used = (await db.admin.query('SELECT used_at FROM backoffice.webauthn_challenges WHERE id = $1', [up.stepUpId])).rows[0];
+    expect(used.used_at).not.toBeNull();
+  });
+});
+
+describe('security permission scope (05 §5.3: security administration is global)', () => {
+  it('global-only roles can not be granted per city: refused by the API and by the database', async () => {
+    const maker = await login('sec-a');
+    const cityScope = { kind: 'CITIES', cityIds: ['0190f0aa-0000-7000-8000-00000000c1c1'] };
+    for (const roleCode of ['SECURITY_ADMIN', 'FINANCE', 'AUDITOR']) {
+      const r = await req(maker, 'POST', '/admin/v1/grants', { adminUserId: admins['nobody'], roleCode, scope: cityScope }, { 'idempotency-key': randomUUID() });
+      expect(r.body, roleCode).toMatchObject({ code: 'VALIDATION_FAILED', fields: [{ path: 'scope', code: 'GLOBAL_ONLY_ROLE' }] });
+    }
+    for (const roleCode of ['SECURITY_ADMIN', 'FINANCE', 'AUDITOR']) {
+      const approval = newId();
+      await db.migrator.query(
+        `INSERT INTO backoffice.approval_requests (id, action_type, resource_type, resource_id, payload, payload_hash, risk_level, requested_by_admin_id,
+           required_approver_permission, decided_by_admin_id, decided_at, status, expires_at)
+         VALUES ($1, 'security.grant', 'backoffice.admin_user', $2, '{}', $3, 'HIGH', $4, 'security.grant.approve', $5, now(), 'EXECUTED', now() + interval '1 day')`,
+        [approval, admins['nobody'], randomBytes(32), admins['sec-a'], admins['sec-b']]);
+      await expect(db.migrator.query(
+        `INSERT INTO backoffice.admin_grants (id, admin_user_id, role_code, scope_kind, city_ids, granted_by_admin_id, approved_by_admin_id, approval_request_id)
+         VALUES ($1, $2, $3, 'CITIES', ARRAY['0190f0aa-0000-7000-8000-00000000c1c1']::uuid[], $4, $5, $6)`,
+        [newId(), admins['nobody'], roleCode, admins['sec-a'], admins['sec-b'], approval]), roleCode).rejects.toMatchObject({ code: 'HS020' });
+    }
+  });
+
+  it('every role holding a security-administration permission is global-only (DB)', async () => {
+    const r = await db.admin.query(`SELECT DISTINCT r.code, r.global_only FROM backoffice.role_permissions p JOIN backoffice.roles r ON r.code = p.role_code
+      WHERE p.permission IN ('security.grant', 'security.grant.approve', 'security.access_review') OR p.permission = 'security.*'`);
+    expect(r.rows.length).toBeGreaterThan(0);
+    for (const row of r.rows) expect(row.global_only, row.code).toBe(true);
+  });
+
+  it('a city-scoped security permission (if a role ever carried one) authorises no security administration', async () => {
+    const cityAdmin = { kind: 'ADMIN' as const, id: admins['nobody'] ?? '', sessionId: 's', surface: 'ADMIN' as const,
+      permissions: new Map([['security.grant', [{ kind: 'CITIES' as const, cityIds: ['0190f0aa-0000-7000-8000-00000000c1c1'] }]],
+        ['security.grant.approve', [{ kind: 'CITIES' as const, cityIds: ['0190f0aa-0000-7000-8000-00000000c1c1'] }]]]) };
+    await expect(app.backoffice.requestGrant(cityAdmin, { adminUserId: admins['auditor-x'] ?? '', roleCode: 'SUPPORT_L1', scope: { kind: 'GLOBAL' } }, randomUUID(), meta()))
+      .rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+});
+
+describe('single active admin session under concurrency (05 §2.5)', () => {
+  it('simultaneous logins of one admin leave exactly one active session', async () => {
+    const name = `conc-${randomUUID().slice(0, 8)}`;
+    await seedAdmin(name);
+    const results = await Promise.all(Array.from({ length: 6 }, async () =>
+      app.http({ method: 'POST', path: '/admin/v1/session', headers: { 'x-proxy-assertion': await idp.mint(name, { now: clock.now() }) }, meta: meta() })));
+    expect(results.every((r) => r.status === 200)).toBe(true);
+    const active = await db.admin.query('SELECT count(*)::int AS n FROM backoffice.admin_sessions WHERE admin_user_id = $1 AND revoked_at IS NULL', [admins[name]]);
+    expect(active.rows[0].n).toBe(1);
+    const all = await db.admin.query('SELECT count(*)::int AS n FROM backoffice.admin_sessions WHERE admin_user_id = $1', [admins[name]]);
+    expect(all.rows[0].n).toBe(6);
   });
 });
 

@@ -285,6 +285,27 @@ describe('field encryption and erasure (SR-06, SR-07, ST-28)', () => {
     h.clock.advance(31_000);
     await requestOtp(t.phone);
   });
+
+  it('crypto-shredding across independent instances: no new decryption anywhere; a warm cache may decrypt for ≤ 5 minutes (accepted SR-06 window)', async () => {
+    const t = await appLogin(); // instance A (h.api) sealed the phone and holds the data key in its cache
+    const instanceB = await h.role('app_api', 'api'); // a second api process with its own, independent cache
+    expect(await instanceB.identity.revealPhoneForDelivery(t.userId)).toBe(t.phone); // B now caches the key too
+    const ciphertext = (await h.db.admin.query('SELECT phone_enc FROM identity.users WHERE id = $1', [t.userId])).rows[0].phone_enc as Buffer;
+    const worker = await h.role('app_worker', 'worker');
+    await worker.identity.eraseIdentity(t.userId, meta()); // a third process erases; it can't reach A's or B's memory
+    // Simulate a restored copy of the ciphertext (e.g. from a backup) so each instance actually attempts decryption.
+    await h.db.admin.query("UPDATE identity.users SET status = 'SUSPENDED', phone_enc = $2, erased_at = NULL WHERE id = $1", [t.userId, ciphertext]);
+    const instanceC = await h.role('app_api', 'api'); // cold cache
+    await expect(instanceC.identity.revealPhoneForDelivery(t.userId)).rejects.toThrow(/destroyed/); // immediately unreadable
+    // Accepted window: instances that already cached the data key can still decrypt until the cache entry expires.
+    // Erasure does NOT revoke other processes' caches immediately.
+    expect(await h.api.identity.revealPhoneForDelivery(t.userId)).toBe(t.phone);
+    expect(await instanceB.identity.revealPhoneForDelivery(t.userId)).toBe(t.phone);
+    h.clock.advance(5 * 60_000 + 1_000);
+    await expect(h.api.identity.revealPhoneForDelivery(t.userId)).rejects.toThrow(/destroyed/);
+    await expect(instanceB.identity.revealPhoneForDelivery(t.userId)).rejects.toThrow(/destroyed/);
+    await h.db.admin.query("UPDATE identity.users SET status = 'ERASED', phone_enc = NULL, erased_at = now() WHERE id = $1", [t.userId]);
+  });
 });
 
 describe('IVR PIN (05 §2.3)', () => {

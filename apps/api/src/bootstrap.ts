@@ -4,14 +4,14 @@
 // `http` is the framework-neutral handler used by the tests.
 import type { KeyObject } from 'node:crypto';
 import type pg from 'pg';
-import type { Clock } from '@hsp/kernel';
+import type { AppEnvironment, Clock } from '@hsp/kernel';
 import { createIdentityHttp, identityEndpoints } from '@hsp/module-identity/http';
 import {
   IdentityService, registerIdentityPolicies, type BotVerifier, type IdentityKeys, type OtpSender, type PhonePolicy, type SurfaceEligibility,
 } from '@hsp/module-identity';
 import type { Logger } from '@hsp/observability';
 import { assertEndpointRegistry, PolicyRegistry } from '@hsp/policy';
-import { createDekCache, createRateLimiter, MemoryRateLimitStore, type JwtSigner, type KeyManagementPort, type RateLimitStore } from '@hsp/security';
+import { assertRateLimitStore, createDekCache, createRateLimiter, type JwtSigner, type KeyManagementPort, type RateLimitStore } from '@hsp/security';
 
 export interface ApiComposition {
   readonly identity: IdentityService;
@@ -34,11 +34,13 @@ export interface ApiCompositionOptions {
   readonly phonePolicy: PhonePolicy;
   readonly allowedWebOrigins: readonly string[];
   readonly fixedOtpCodes?: ReadonlyMap<string, string>;
-  /** Valkey store when deployed; in-memory store for local / CI. */
-  readonly rateLimitStore?: RateLimitStore;
+  readonly appEnv: AppEnvironment;
+  /** Required. Deployed environments need the shared atomic (Valkey) store; `MemoryRateLimitStore` is local / test only. */
+  readonly rateLimitStore: RateLimitStore | undefined;
 }
 
 export function composeApi(o: ApiCompositionOptions): ApiComposition {
+  const rateLimitStore = assertRateLimitStore(o.rateLimitStore, o.appEnv);
   const policies = new PolicyRegistry((d) => {
     if (!d.allow) o.logger.log('info', 'authz.denied', { policyAction: d.action, actorKind: d.actorKind, reason: d.reason ?? 'UNKNOWN' });
   });
@@ -46,7 +48,7 @@ export function composeApi(o: ApiCompositionOptions): ApiComposition {
   assertEndpointRegistry(identityEndpoints, policies);
   const identity = new IdentityService({
     pool: o.pool, clock: o.clock, kms: o.kms, dekCache: createDekCache(), keys: o.keys, tokenSigner: o.tokenSigner,
-    tokenVerificationKeys: o.tokenVerificationKeys, issuer: o.issuer, rateLimiter: createRateLimiter(o.rateLimitStore ?? new MemoryRateLimitStore()),
+    tokenVerificationKeys: o.tokenVerificationKeys, issuer: o.issuer, rateLimiter: createRateLimiter(rateLimitStore),
     logger: o.logger, otpSender: o.otpSender, eligibility: o.eligibility, botVerifier: o.botVerifier, policies, phonePolicy: o.phonePolicy,
     allowedWebOrigins: o.allowedWebOrigins, ...(o.fixedOtpCodes ? { fixedOtpCodes: o.fixedOtpCodes } : {}),
   });
