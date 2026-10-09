@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import type { Queryable } from '@hsp/db';
 import {
   ADJACENCY, ADMINS, CATEGORIES, CITY, CUSTOMERS, FIXTURE_EPOCH, fixtureRowId, LOCALITIES, LOCALITY_ALIASES, localityByCode, MATERIALS, must,
-  RATE_CARDS, REPAIR_ITEMS, SERVICE_TYPES, serviceTypeId, specializationId, SYMPTOMS, TECHNICIANS, warrantyDays, ZONES,
+  PROBLEMS, RATE_CARDS, REPAIR_ITEMS, SERVICE_TYPES, serviceTypeId, specializationId, SYMPTOMS, TECHNICIANS, warrantyDays, ZONES,
 } from '../fixtures/kurnool.ts';
 import { blindIndexFixture, encryptFixture, FIXTURE_KEY_REF, maskPhone } from '../fixtures/synthetic-crypto.ts';
 
@@ -105,6 +105,12 @@ export async function loadSyntheticSeed(db: Queryable): Promise<SeedSummary> {
       [fixtureRowId('catalog.symptoms', `${s.serviceType}/${s.code}`), serviceTypeId(s.serviceType), s.code, { en: s.en, te: s.te }],
     );
   }
+  for (const [i, pr] of PROBLEMS.entries()) {
+    await run(
+      `INSERT INTO catalog.problems (id, service_type_id, code, names, sort_order, status) VALUES ($1, $2, $3, $4, $5, 'ACTIVE') ON CONFLICT DO NOTHING`,
+      [fixtureRowId('catalog.problems', `${pr.serviceType}/${pr.code}`), serviceTypeId(pr.serviceType), pr.code, { en: pr.en }, i],
+    );
+  }
   for (const r of REPAIR_ITEMS) {
     await run(
       `INSERT INTO catalog.repair_items (id, service_type_id, code, keypad_code, names, required_service_type_id,
@@ -154,8 +160,11 @@ export async function loadSyntheticSeed(db: Queryable): Promise<SeedSummary> {
       );
     }
     for (const [feeType, params] of [
-      ['PLATFORM_FEE', { bps: 1000, fixture: 'NOT_FINAL' }],
-      ['DIAGNOSIS_PAYOUT', { amount_paise: 10000, fixture: 'NOT_FINAL' }],
+      // Gate 6 quote fee rules (ADR-027 #4): the pricing model is data. Test values only, NOT FINAL.
+      ['PLATFORM_FEE', { amount_paise: card.platformFeePaise, fixture: 'NOT_FINAL' }],
+      ['VISIT_FEE_CREDIT', { credit_bps: card.visitFeeCreditBps, fixture: 'NOT_FINAL' }],
+      ['MATERIAL_MARKUP', { bps: 0, fixture: 'NOT_FINAL' }],
+      ['DIAGNOSIS_PAYOUT', { amount_paise: card.diagnosisPayoutPaise, fixture: 'NOT_FINAL' }],
       // Gate 5 lifecycle fees (06 §10), test values only, NOT FINAL.
       ['CANCELLATION', { free_cancel_lead_minutes: 120, late_cancel_paise: 4900, en_route_paise: 9900, technician_share_bps: 7500, fixture: 'NOT_FINAL' }],
       ['NO_SHOW', { customer_fee_paise: 9900, technician_compensation_paise: 7500, fixture: 'NOT_FINAL' }],

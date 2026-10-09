@@ -10,5 +10,23 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@hsp/contracts": "workspace:*",
+    "@hsp/db": "workspace:*",
+    "@hsp/errors": "workspace:*",
+    "@hsp/kernel": "workspace:*",
+    "@hsp/module-catalog": "workspace:*",
+    "@hsp/module-jobs": "workspace:*",
+    "@hsp/module-pricing": "workspace:*",
+    "@hsp/money": "workspace:*",
+    "@hsp/observability": "workspace:*",
+    "@hsp/policy": "workspace:*",
+    "@hsp/security": "workspace:*",
+    "pg": "8.23.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1"
   }
 }

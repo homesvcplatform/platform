@@ -30,6 +30,14 @@ export interface LifecyclePolicy {
   readonly codeMaxAttempts: number;
   /** Technician release without a late-release mark until window start − lead (06 §4). */
   readonly freeReleaseLeadMs: number;
+  /** Gate 6 (06 §3): a diagnosis visit is checked out by the system this long after its quote was presented. */
+  readonly autoCheckoutAfterPresentationMs: number;
+  /** Gate 6 (06 §3 same-visit guard): the approval must come within this time of the presentation. */
+  readonly sameVisitMaxWaitMs: number;
+  /** Gate 6 (06 §8): an approved repair order still unscheduled after this → ops queue (needs attention). */
+  readonly repairUnscheduledMs: number;
+  /** Gate 6 (06 §8): a BLOCKED repair order is followed up by ops after this. */
+  readonly blockedFollowupMs: number;
 }
 
 const MIN = 60_000;
@@ -52,4 +60,8 @@ export const FIXTURE_LIFECYCLE_POLICY: LifecyclePolicy = Object.freeze({
   l3RetentionMs: 30 * 24 * HOUR,
   codeMaxAttempts: 5,
   freeReleaseLeadMs: 2 * HOUR,
+  autoCheckoutAfterPresentationMs: 30 * MIN,
+  sameVisitMaxWaitMs: 45 * MIN,
+  repairUnscheduledMs: 24 * HOUR,
+  blockedFollowupMs: 48 * HOUR,
 });

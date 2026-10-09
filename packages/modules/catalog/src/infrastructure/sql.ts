@@ -35,6 +35,12 @@ export const SQL = {
   repairItemByKeypad: `
     SELECT id, code, keypad_code, names, required_service_type_id, required_specialization_id, warranty_policy_code
       FROM catalog.repair_items WHERE service_type_id = $1 AND keypad_code = $2 AND status = 'ACTIVE'`,
+  // Gate 6 (ADR-027 #1): the problem taxonomy a diagnosis names, and repair items / materials by id.
+  problems: `SELECT code FROM catalog.problems WHERE service_type_id = $1 AND status = 'ACTIVE' ORDER BY sort_order, code`,
+  repairItemsByIds: `
+    SELECT id, code, keypad_code, names, service_type_id, required_service_type_id, required_specialization_id, warranty_policy_code
+      FROM catalog.repair_items WHERE id = ANY($1::uuid[]) AND status = 'ACTIVE'`,
+  materialsByIds: `SELECT id, code, unit FROM catalog.materials WHERE id = ANY($1::uuid[]) AND status = 'ACTIVE'`,
   materialReference: `
     SELECT p.unit_price_paise, m.unit FROM catalog.material_reference_prices p JOIN catalog.materials m ON m.id = p.material_id
      WHERE p.material_id = $1 AND p.city_id = $2 AND p.effective @> $3::timestamptz AND m.status = 'ACTIVE'`,

@@ -1,7 +1,9 @@
-// Composition of the `api` process role (Gates 3–5): wiring only (B6). Builds the policy registry (default deny), checks
+// Composition of the `api` process role (Gates 3–6): wiring only (B6). Builds the policy registry (default deny), checks
 // that every declared endpoint has a registered policy and an idempotency declaration (B11 / B12), and wires identity,
-// the public geo / catalog reads (catalog's city lookup is geo, ADR-025 #8) and the jobs lifecycle with its ports
-// (customers addresses, pricing, catalog, workforce, geo, compliance disclosure log, the TCP-3 placeholder bill issuer).
+// the public geo / catalog reads (catalog's city lookup is geo, ADR-025 #8), the jobs lifecycle with its ports
+// (customers addresses, pricing, catalog, workforce, geo, compliance disclosure log, the TCP-3 placeholder bill issuer)
+// and, Gate 6, diagnosis / quotes with theirs (jobs reads, catalog, pricing engine, workforce skills, the identity
+// quote-approval OTP, link delivery, call evidence); jobs gets the diagnosis TCP-2 recorder and quote facts.
 // The HTTP framework adapter (ADR-024 #1: decorator-free) is attached in a later gate; until then the handlers are
 // framework-neutral functions used by the tests.
 import type { KeyObject } from 'node:crypto';
@@ -13,6 +15,10 @@ import { createGeoHttp, geoEndpoints } from '@hsp/module-geo/http';
 import { GeoService, registerGeoPolicies } from '@hsp/module-geo';
 import { recordDisclosure } from '@hsp/module-compliance';
 import { CustomersService } from '@hsp/module-customers';
+import { createDiagnosisHttp, createDiagnosisLinkHttp, diagnosisEndpoints, diagnosisLinkEndpoints } from '@hsp/module-diagnosis/http';
+import {
+  DiagnosisService, FIXTURE_DIAGNOSIS_POLICY, registerDiagnosisPolicies, type CallEvidence, type DiagnosisPolicy, type QuoteLinkSender,
+} from '@hsp/module-diagnosis';
 import { createIdentityHttp, identityEndpoints } from '@hsp/module-identity/http';
 import {
   IdentityService, registerIdentityPolicies, subjectKeyStore, type BotVerifier, type IdentityKeys, type OtpSender, type PhonePolicy,
@@ -37,6 +43,9 @@ export interface ApiComposition {
   readonly jobs: JobsService;
   readonly jobsHttp: ReturnType<typeof createJobsHttp>;
   readonly pricing: PricingService;
+  readonly diagnosis: DiagnosisService;
+  readonly diagnosisHttp: ReturnType<typeof createDiagnosisHttp>;
+  readonly diagnosisLinkHttp: ReturnType<typeof createDiagnosisLinkHttp>;
   readonly policies: PolicyRegistry;
 }
 
@@ -62,7 +71,21 @@ export interface ApiCompositionOptions {
   readonly jobsCodeKey: Buffer;
   /** Lifecycle policy values; defaults to the fixture values (NOT FINAL, ADR-026 #6). */
   readonly lifecyclePolicy?: LifecyclePolicy;
+  /** Gate 6: diagnosis / quote policy values; defaults to the fixture values (NOT FINAL, ADR-027). */
+  readonly diagnosisPolicy?: DiagnosisPolicy;
+  /** Signed approval links reach the customer through comms (Gate 8+); until then nothing is delivered (fake in tests). */
+  readonly quoteLinkSender?: QuoteLinkSender;
+  /** Bridged-call evidence for ops-desk capture (telephony, Gate 10); none by default (fake in tests). */
+  readonly callEvidence?: CallEvidence;
 }
+
+/** No link delivery channel yet (comms, Gate 8): the token is dropped, never logged. Customers use the app session. */
+export function undeliveredQuoteLinks(logger: Logger): QuoteLinkSender {
+  return { deliver: async () => { logger.log('warn', 'diagnosis.quote_link_not_delivered', { outcome: 'NO_CHANNEL' }); } };
+}
+
+/** No telephony yet (Gate 10): no call is ever evidenced, so ops capture and recorded approvals stay impossible. */
+export const NO_CALL_EVIDENCE: CallEvidence = { bridgedCall: async () => false, recordedCustomerCall: async () => false };
 
 export function composeApi(o: ApiCompositionOptions): ApiComposition {
   const rateLimitStore = assertRateLimitStore(o.rateLimitStore, o.appEnv);
@@ -73,7 +96,8 @@ export function composeApi(o: ApiCompositionOptions): ApiComposition {
   registerGeoPolicies(policies);
   registerCatalogPolicies(policies);
   registerJobsPolicies(policies);
-  assertEndpointRegistry([...identityEndpoints, ...geoEndpoints, ...catalogEndpoints, ...jobsEndpoints], policies);
+  registerDiagnosisPolicies(policies);
+  assertEndpointRegistry([...identityEndpoints, ...geoEndpoints, ...catalogEndpoints, ...jobsEndpoints, ...diagnosisEndpoints, ...diagnosisLinkEndpoints], policies);
   const dekCache = createDekCache();
   const rateLimiter = createRateLimiter(rateLimitStore);
   const identity = new IdentityService({
@@ -86,10 +110,18 @@ export function composeApi(o: ApiCompositionOptions): ApiComposition {
   const catalog = new CatalogService({ pool: o.pool, clock: o.clock, logger: o.logger, policies, rateLimiter, cities: geo });
   const pricing = new PricingService({ pool: o.pool, clock: o.clock });
   const customers = new CustomersService({ pool: o.pool, clock: o.clock, kms: o.kms, dekCache, keyStore: subjectKeyStore, localities: geo });
+  const technicians = new TechnicianDirectory(o.pool);
+  // diagnosis reads jobs (allowed dependency); jobs reaches diagnosis only through its ports (TCP-2, quote facts).
+  const diagnosis: DiagnosisService = new DiagnosisService({
+    pool: o.pool, clock: o.clock, logger: o.logger, policies, policy: o.diagnosisPolicy ?? FIXTURE_DIAGNOSIS_POLICY, requestHashKey: o.keys.requestHashKey,
+    appEnv: o.appEnv, jobs: { diagnosisVisitFacts: (v) => jobs.diagnosisVisitFacts(v), quoteJobFacts: (j) => jobs.quoteJobFacts(j) }, catalog, pricing,
+    skills: technicians, otp: identity, links: o.quoteLinkSender ?? undeliveredQuoteLinks(o.logger), callEvidence: o.callEvidence ?? NO_CALL_EVIDENCE,
+  });
   const jobs = new JobsService({
     pool: o.pool, clock: o.clock, logger: o.logger, policies, policy: o.lifecyclePolicy ?? FIXTURE_LIFECYCLE_POLICY, codeKey: o.jobsCodeKey,
-    requestHashKey: o.keys.requestHashKey, addresses: customers, offers: catalog, pricing, technicians: new TechnicianDirectory(o.pool), localities: geo,
+    requestHashKey: o.keys.requestHashKey, addresses: customers, offers: catalog, pricing, technicians, localities: geo,
     bills: createPlaceholderBillIssuer(pricing), recordDisclosure: (e) => recordDisclosure(o.pool, e),
+    repairQuotes: diagnosis.repairQuotes(), materialUsage: diagnosis.materialUsageRecorder(), repairSkills: technicians,
   });
   // Customer (cookie + CSRF) or technician (bearer) session → actor, as the identity handlers do.
   const authenticate = async (req: JobsHttpRequest): Promise<Actor> => {
@@ -102,6 +134,7 @@ export function composeApi(o: ApiCompositionOptions): ApiComposition {
   };
   return {
     identity, http: createIdentityHttp(identity), geo, geoHttp: createGeoHttp(geo), catalog, catalogHttp: createCatalogHttp(catalog),
-    jobs, jobsHttp: createJobsHttp(jobs, authenticate), pricing, policies,
+    jobs, jobsHttp: createJobsHttp(jobs, authenticate), pricing, diagnosis, diagnosisHttp: createDiagnosisHttp(diagnosis, authenticate),
+    diagnosisLinkHttp: createDiagnosisLinkHttp(diagnosis), policies,
   };
 }

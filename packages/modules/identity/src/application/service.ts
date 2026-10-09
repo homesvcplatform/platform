@@ -201,7 +201,7 @@ export class IdentityService {
   }
 
   /** Checks a challenge inside a transaction. Wrong / expired / used challenges all return the same failure. */
-  async #checkChallenge(c: pg.ClientBase, challengeId: string, code: string, purpose: 'LOGIN' | 'STEP_UP', now: Date): Promise<Buffer | undefined> {
+  async #checkChallenge(c: pg.ClientBase, challengeId: string, code: string, purpose: 'LOGIN' | 'STEP_UP' | 'QUOTE_LINK_APPROVAL', now: Date): Promise<Buffer | undefined> {
     const ch = (await c.query(SQL.lockOtp, [challengeId])).rows[0] as Row | undefined;
     if (!ch || ch['purpose'] !== purpose || ch['consumed_at'] !== null || (ch['expires_at'] as Date) <= now
       || (ch['attempts'] as number) >= (ch['max_attempts'] as number)) return undefined;
@@ -482,6 +482,46 @@ export class IdentityService {
       return ok;
     });
     if (!outcome) throw new AppError('OTP_INVALID');
+  }
+
+  // ---------------------------------------------------------------- quote approval OTP (Gate 6, ADR-027 #13, SR-05)
+
+  /**
+   * Sends a QUOTE_LINK_APPROVAL code to the user's REGISTERED number (never a number from the request, SR-05) and
+   * returns the challenge. Called through the diagnosis module's port after it has validated the signed link (or, for
+   * the ops-recorded channel, the read-back code). Same per-phone limits as login.
+   */
+  async requestQuoteApprovalOtp(userId: string, meta: RequestMeta): Promise<{ challengeId: string; expiresInSec: number }> {
+    const now = this.#now();
+    const issued = await withTransaction(this.#d.pool, async (c) => {
+      const user = (await c.query(SQL.userById, [userId])).rows[0] as Row | undefined;
+      if (!user || user['status'] !== 'ACTIVE') throw new AppError('NOT_FOUND');
+      const bidx = user['phone_bidx'] as Buffer;
+      await this.#perPhoneLimits(c, bidx, now);
+      const challengeId = newId();
+      const code = numericCode(OTP.digits);
+      await c.query(SQL.insertOtp, [challengeId, bidx, 'QUOTE_LINK_APPROVAL', 'SMS', otpCodeHmac(this.#d.keys.otpPepper, challengeId, code), OTP.maxAttempts,
+        new Date(now.getTime() + OTP.ttlMs), hmacSha256(this.#d.keys.requestHashKey, `ip|${meta.clientIp}`), null, now]);
+      await this.#audit(c, { actorType: 'CUSTOMER', actorId: userId, action: 'auth.otp_requested', resourceType: 'identity.user', resourceId: userId,
+        outcome: 'SUCCESS', changeSummary: { purpose: 'QUOTE_LINK_APPROVAL', channel: 'SMS' } }, meta);
+      return { challengeId, code };
+    });
+    await this.#send(issued.challengeId, 'SMS', issued.code, userId);
+    return { challengeId: issued.challengeId, expiresInSec: OTP.ttlMs / 1000 };
+  }
+
+  /** Verifies (and consumes) a QUOTE_LINK_APPROVAL code; true only when it was issued to this user's registered number. */
+  async verifyQuoteApprovalOtp(userId: string, input: { challengeId: string; code: string }, meta: RequestMeta): Promise<boolean> {
+    const now = this.#now();
+    return withTransaction(this.#d.pool, async (c) => {
+      const bidx = await this.#checkChallenge(c, input.challengeId, input.code, 'QUOTE_LINK_APPROVAL', now);
+      const user = (await c.query(SQL.userById, [userId])).rows[0] as Row | undefined;
+      const ok = bidx !== undefined && user !== undefined && user['status'] === 'ACTIVE' && Buffer.isBuffer(user['phone_bidx'])
+        && constantTimeEqual(bidx, user['phone_bidx']);
+      await this.#audit(c, { actorType: 'CUSTOMER', actorId: userId, action: 'auth.otp_verified', resourceType: 'identity.user', resourceId: userId,
+        outcome: ok ? 'SUCCESS' : 'FAILED', changeSummary: { purpose: 'QUOTE_LINK_APPROVAL' } }, meta);
+      return ok;
+    });
   }
 
   // ---------------------------------------------------------------- IVR PIN (05 §2.3)

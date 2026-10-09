@@ -1,6 +1,6 @@
 // jobs authorization policies (Phase 1 05 §11 rows "Create booking" (CUS O, SUP-L1/L2 S), "Cancel job" (CUS O),
-// "Manual assignment" (DISP S), "Depart/arrive (with code)" (TEC-APP O), "Presence override" (change requests), 04 §7 /
-// §10). Object-level checks return 404 so another customer's job or another technician's visit isn't confirmed to exist.
+// "Manual assignment" (DISP S), "Depart/arrive (with code)" (TEC-APP O), "Complete repair (code)" (TEC-APP O),
+// "Presence override" (change requests), 04 §7 / §10 / §12). Object-level checks return 404 so another customer's job or another technician's visit isn't confirmed to exist.
 import { ALLOW, deny, hasPermission, type Actor, type PolicyRegistry } from '@hsp/policy';
 
 export interface OwnedResource {
@@ -24,7 +24,9 @@ const scoped = (a: Actor, permission: string, r: CityResource) =>
 
 export function registerJobsPolicies(registry: PolicyRegistry): void {
   registry.define('jobs.job.create', (a) => (customerSession(a) ? ALLOW : deny('NOT_A_CUSTOMER_SESSION')));
-  for (const action of ['jobs.job.read', 'jobs.job.cancel', 'jobs.visit.start_code']) {
+  // Gate 6 (04 §11–§12): the customer's repair order (read, schedule, cancel) and the repair visit's completion code.
+  for (const action of ['jobs.job.read', 'jobs.job.cancel', 'jobs.visit.start_code', 'jobs.visit.completion_code', 'jobs.repair_order.read',
+    'jobs.repair_order.schedule', 'jobs.repair_order.cancel']) {
     registry.define<OwnedResource>(action, (a, r) => (customerSession(a) && r.ownerUserId === a.id ? ALLOW : deny('NOT_OWNER', 404)));
   }
   // The IVR surface gets its own commands with the IVR gate (Gate 10).

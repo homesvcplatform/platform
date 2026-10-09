@@ -1,14 +1,18 @@
 // Public facade of module "jobs". The ONLY entry other modules and apps may import (B1).
 // Gate 5: job / visit / assignment / repair-order lifecycle, booking, manual assignment, technician visit actions,
 // disclosure, cancellation evaluation, durable timers; TCP-1 assignment facade and TCP-2 / TCP-3 ports.
+// Gate 6 (ADR-027): diagnosis checkout, repair orders from quote events (consumer), repair scheduling / cancellation,
+// materials confirmation, repair completion (code or ops override) with TCP-2 usage and TCP-3 bills; facade reads for
+// the diagnosis module.
 export const moduleName = 'jobs' as const;
 export const schemaName = 'jobs' as const;
 export type {
-  AddressBook, BillIssuer, LifecyclePricing, LocalityDistance, MaterialUsageRecorder, ServiceOffer, TechnicianCapacity, TransactionContext,
+  AddressBook, ApprovedQuoteFacts, BillIssuer, BillKind, LifecyclePricing, LocalityDistance, MaterialUsageRecorder, QuotedMaterial, RepairQuotes,
+  RepairSkills, ServiceOffer, TechnicianCapacity, TransactionContext,
 } from './ports.ts';
 export { JobsService, TIMER_TASKS } from '../application/service.ts';
-export type { BookingInput, JobsDeps, RequestMeta, Timing } from '../application/service.ts';
-export { arrivalOverrideChangeAction } from '../application/changes.ts';
+export type { BookingInput, CompletionInput, DiagnosisVisitFacts, JobsDeps, QuoteJobFacts, RequestMeta, Timing } from '../application/service.ts';
+export { arrivalOverrideChangeAction, completionOverrideChangeAction } from '../application/changes.ts';
 export { registerJobsPolicies } from '../domain/policies.ts';
 export type { AssigneeResource, CityResource, OwnedResource } from '../domain/policies.ts';
 /** Every jobs SQL statement (for the B2 schema-ownership fitness test). */
