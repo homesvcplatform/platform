@@ -3,6 +3,7 @@
 export const moduleName = 'geo' as const;
 export const schemaName = 'geo' as const;
 export { GeoService } from '../application/service.ts';
+export { cityLocalesChangeAction, repositoryCatalogIssues } from '../application/changes.ts';
 export type { City, GeoDeps, PublicRequestMeta } from '../application/service.ts';
 export { isInIndia, normalizeSearchText, shortestTravel } from '../domain/geo.ts';
 export type { AdjacencyEdge } from '../domain/geo.ts';

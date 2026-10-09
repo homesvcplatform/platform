@@ -3,6 +3,7 @@
 export const moduleName = 'catalog' as const;
 export const schemaName = 'catalog' as const;
 export { CatalogService } from '../application/service.ts';
+export { serviceRulesChangeAction } from '../application/changes.ts';
 export type { CatalogDeps, CityDirectory, PublicRequestMeta, RepairItem } from '../application/service.ts';
 export { effectiveRule, parseServiceRules, serviceRulesSchema } from '../domain/rules.ts';
 export type { ServiceRules } from '../domain/rules.ts';

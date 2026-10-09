@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@hsp/contracts": "workspace:*",
+    "@hsp/db": "workspace:*",
     "@hsp/errors": "workspace:*",
     "@hsp/kernel": "workspace:*",
     "@hsp/localization": "workspace:*",
@@ -23,7 +24,6 @@
     "zod": "4.6.5"
   },
   "devDependencies": {
-    "@hsp/db": "workspace:*",
     "@types/pg": "8.23.1"
   }
 }

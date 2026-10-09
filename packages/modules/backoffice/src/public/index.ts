@@ -6,9 +6,11 @@ export const schemaName = 'backoffice' as const;
 export { BackofficeService, canonicalJson } from '../application/service.ts';
 export type { AdminRequest, AdminRequestMeta, BackofficeDeps, GrantInput, IdpConfig } from '../application/service.ts';
 export { registerBackofficePolicies } from '../domain/policies.ts';
-export type { GrantResource } from '../domain/policies.ts';
+export type { ChangeResource, GrantResource } from '../domain/policies.ts';
+export { changeActionRegistry } from '../domain/changes.ts';
+export type { ChangeAction, ChangeExecutionContext, ChangeSummaryValue, PreparedChange } from '../domain/changes.ts';
 export {
-  ADMIN_COOKIE, ADMIN_PERMISSIONS, ADMIN_SESSION, ADMIN_STEP_UP_MS, isKnownPermissionEntry, isPhishingResistant, passkeyCeremoniesAllowed,
+  ADMIN_COOKIE, ADMIN_PERMISSIONS, ADMIN_SESSION, ADMIN_STEP_UP_MS, DECISION_OPERATIONS, isKnownPermissionEntry, isPhishingResistant, passkeyCeremoniesAllowed,
   PERMISSIONS_VERSION, STEP_UP_OPERATIONS, WEBAUTHN_INDEPENDENT_REVIEW_PASSED,
 } from '../domain/permissions.ts';
 export type { AdminPermission, StepUpOperation } from '../domain/permissions.ts';

@@ -38,4 +38,19 @@ export const SQL = {
   materialReference: `
     SELECT p.unit_price_paise, m.unit FROM catalog.material_reference_prices p JOIN catalog.materials m ON m.id = p.material_id
      WHERE p.material_id = $1 AND p.city_id = $2 AND p.effective @> $3::timestamptz AND m.status = 'ACTIVE'`,
+
+  // Approved service-rule changes (ADR-025 #7): cut the rule in force at the start, retire later-dated ones, insert.
+  lockServiceType: `SELECT id FROM catalog.service_types WHERE id = $1 FOR UPDATE`,
+  ruleOfChangeRequest: `SELECT id FROM catalog.service_rules WHERE approval_request_id = $1 AND service_type_id = $2 AND city_id IS NOT DISTINCT FROM $3::uuid`,
+  cutActiveRules: `
+    UPDATE catalog.service_rules SET effective = tstzrange(lower(effective), $3::timestamptz)
+     WHERE service_type_id = $1 AND city_id IS NOT DISTINCT FROM $2::uuid AND status = 'ACTIVE'
+       AND (lower_inf(effective) OR lower(effective) < $3::timestamptz) AND (upper_inf(effective) OR upper(effective) > $3::timestamptz)`,
+  retireLaterRules: `
+    UPDATE catalog.service_rules SET status = 'RETIRED'
+     WHERE service_type_id = $1 AND city_id IS NOT DISTINCT FROM $2::uuid AND status = 'ACTIVE'
+       AND NOT lower_inf(effective) AND lower(effective) >= $3::timestamptz`,
+  insertRule: `
+    INSERT INTO catalog.service_rules (id, service_type_id, city_id, rules, effective, status, approval_request_id)
+    VALUES ($1, $2, $3, $4, tstzrange($5::timestamptz, NULL), 'ACTIVE', $6)`,
 } as const;

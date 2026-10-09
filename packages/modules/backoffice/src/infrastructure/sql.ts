@@ -57,6 +57,12 @@ export const SQL = {
   decideApproval: `UPDATE backoffice.approval_requests SET status = $2, decided_by_admin_id = $3, decided_at = $4
                     WHERE id = $1 AND status = 'PENDING'`,
   markExecuted: "UPDATE backoffice.approval_requests SET status = 'EXECUTED' WHERE id = $1 AND status = 'APPROVED'",
+  // Change requests (ADR-025 #5): any registered non-security action type.
+  insertChangeRequest: `INSERT INTO backoffice.approval_requests (id, action_type, resource_type, resource_id, payload, payload_hash, risk_level,
+                          requested_by_admin_id, requested_at, required_approver_permission, status, expires_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDING', $11)`,
+  changeRequest: `SELECT id, action_type, resource_id, payload, payload_hash, requested_by_admin_id, status, expires_at
+                    FROM backoffice.approval_requests WHERE id = $1`,
   insertGrant: `INSERT INTO backoffice.admin_grants (id, admin_user_id, role_code, scope_kind, city_ids, granted_by_admin_id, approved_by_admin_id,
                   approval_request_id, expires_at, created_at)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,

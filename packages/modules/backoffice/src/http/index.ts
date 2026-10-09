@@ -31,7 +31,13 @@ export const backofficeEndpoints: readonly EndpointSpec[] = [
   { method: 'POST', path: '/admin/v1/step-up', surface: 'admin', action: 'backoffice.passkey.manage', idempotency: 'implicit', rateClass: 'ADMIN' },
   { method: 'POST', path: '/admin/v1/grants', surface: 'admin', action: 'backoffice.grant.request', idempotency: 'required', rateClass: 'ADMIN' },
   { method: 'POST', path: '/admin/v1/approvals/:approvalRequestId/decision', surface: 'admin', action: 'backoffice.grant.decide', idempotency: 'implicit', rateClass: 'ADMIN' },
+  // Change requests (ADR-025 #5): city service rules, city languages.
+  { method: 'POST', path: '/admin/v1/change-requests', surface: 'admin', action: 'backoffice.change.request', idempotency: 'required', rateClass: 'ADMIN' },
+  { method: 'POST', path: '/admin/v1/change-requests/:changeRequestId/decision', surface: 'admin', action: 'backoffice.change.decide', idempotency: 'implicit', rateClass: 'ADMIN' },
+  { method: 'POST', path: '/admin/v1/change-requests/:changeRequestId/execute', surface: 'admin', action: 'backoffice.change.decide', idempotency: 'implicit', rateClass: 'ADMIN' },
 ];
+
+const CHANGE_REQUEST_PATH = /^\/admin\/v1\/change-requests\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/(decision|execute)$/;
 
 const json = (status: number, body?: unknown, headers: Record<string, string> = {}): AdminHttpResponse => ({
   status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers }, ...(body === undefined ? {} : { body }),
@@ -75,6 +81,13 @@ export function createBackofficeHttp(service: BackofficeService): (req: AdminHtt
 
   return async (req) => {
     try {
+      const change = CHANGE_REQUEST_PATH.exec(req.path);
+      if (req.method.toUpperCase() === 'POST' && change?.[1]) {
+        const actor = await actorOf(req);
+        if (change[2] === 'execute') return json(200, await service.executeChange(actor, change[1], req.meta));
+        const body = parse(contracts.approvalDecision, req.body);
+        return json(200, await service.decideChange(actor, change[1], body.decision, body.stepUpId, req.meta));
+      }
       const route = `${req.method.toUpperCase()} ${req.path.replace(/\/[0-9a-f-]{36}\//, '/:approvalRequestId/')}`;
       switch (route) {
         case 'POST /admin/v1/session': {
@@ -113,6 +126,13 @@ export function createBackofficeHttp(service: BackofficeService): (req: AdminHtt
           const body = parse(contracts.grantRequest, req.body);
           const r = await service.requestGrant(actor, body, key, req.meta);
           return json(202, { approvalRequestId: r.approvalRequestId }, r.replayed ? { 'idempotent-replay': 'true' } : {});
+        }
+        case 'POST /admin/v1/change-requests': {
+          const actor = await actorOf(req);
+          const key = idempotencyKey(req);
+          const body = parse(contracts.changeRequest, req.body);
+          const r = await service.requestChange(actor, body, key, req.meta);
+          return json(202, { changeRequestId: r.changeRequestId }, r.replayed ? { 'idempotent-replay': 'true' } : {});
         }
         case 'POST /admin/v1/approvals/:approvalRequestId/decision': {
           const id = /\/admin\/v1\/approvals\/([0-9a-f-]{36})\/decision$/.exec(req.path)?.[1] ?? '';

@@ -18,8 +18,9 @@ export const ADMIN_PERMISSIONS = [
   'finance.writeoff', 'reconciliation.run', 'reconciliation.resolve',
   // City manager approvals and reads
   'pricing.approve', 'zones.approve', 'trust.sanction.approve', 'service_rules.approve', 'presence_override.approve', 'analytics.read',
+  'locales.approve',
   // Pricing admin
-  'pricing.edit', 'catalog.edit', 'service_rules.edit',
+  'pricing.edit', 'catalog.edit', 'service_rules.edit', 'locales.enable',
   // Auditor
   'audit.read', 'config.read', 'queues.read',
   // Security admin
@@ -48,10 +49,13 @@ export const ADMIN_SESSION = { idleMs: 30 * 60_000, absoluteMs: 10 * 3_600_000 }
 export const ADMIN_STEP_UP_MS = 5 * 60_000;
 
 /**
- * Operations a passkey step-up can authorise. The server decides what is bound: for a grant decision, the approval
- * request id and its stored payload hash. A step-up authorises exactly one use of exactly one operation.
+ * Operations a passkey step-up can authorise. The server decides what is bound: for a grant or change-request decision,
+ * the approval request id, its stored payload hash and the decision. A step-up authorises exactly one use of exactly
+ * one operation.
  */
-export const STEP_UP_OPERATIONS = ['security.grant.decide', 'backoffice.passkey.register'] as const;
+export const STEP_UP_OPERATIONS = ['security.grant.decide', 'backoffice.change.decide', 'backoffice.passkey.register'] as const;
+/** Operations bound to an approval request and a decision. */
+export const DECISION_OPERATIONS: readonly StepUpOperation[] = ['security.grant.decide', 'backoffice.change.decide'];
 export type StepUpOperation = (typeof STEP_UP_OPERATIONS)[number];
 export const isStepUpOperation = (value: unknown): value is StepUpOperation =>
   typeof value === 'string' && (STEP_UP_OPERATIONS as readonly string[]).includes(value);
