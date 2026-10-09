@@ -8,6 +8,7 @@ SET statement_timeout = '60s';
 
 ALTER TABLE platform.outbox ADD COLUMN attempts int NOT NULL DEFAULT 0;
 ALTER TABLE platform.outbox ADD COLUMN last_attempt_at timestamptz;
+SELECT platform.classify('platform.outbox', 'I');   -- tags the new columns
 -- The relay delivers only the oldest pending event of each aggregate (per-aggregate order, even with concurrent relays).
 -- The runner wraps each migration in a transaction, so CONCURRENTLY isn't available; the table is small before pilot.
 -- squawk-ignore require-concurrent-index-creation

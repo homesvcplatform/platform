@@ -10,6 +10,7 @@ SET statement_timeout = '60s';
 -- the worker may DELETE), so the lines are kept here and written to diagnosis_items once, at submission; the column is
 -- cleared then, and both are immutable afterwards (guard_diagnosis / guard_diagnosis_item).
 ALTER TABLE diagnosis.diagnoses ADD COLUMN draft_lines jsonb;
+SELECT platform.classify('diagnosis.diagnoses', 'I');   -- tags the new column (references, codes and quantities only)
 
 CREATE OR REPLACE FUNCTION diagnosis.guard_quote_version() RETURNS trigger
 LANGUAGE plpgsql SET search_path = pg_catalog AS $$

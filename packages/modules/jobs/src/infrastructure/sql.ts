@@ -92,9 +92,10 @@ export const SQL = {
     VALUES ($1, $2, 1, $3, $4, $5, $6, $7, $8, $9)`,
 
   // Gate 6 (ADR-027): diagnosis checkout, repair orders, repair visits, completion codes.
+  // As setVisitTerminal: a disclosure window that never opened (a repair visit completed before its window) records no open time.
   setVisitCompleted: `
     UPDATE jobs.visits SET status = 'COMPLETED', completed_at = $2, terminal_reason_code = $3, disclosure_closes_at = $4, updated_at = $2,
-           version = version + 1
+           version = version + 1, disclosure_opens_at = CASE WHEN disclosure_opens_at > $2 THEN NULL ELSE disclosure_opens_at END
      WHERE id = $1`,
   setCompletionCode: `UPDATE jobs.visits SET completion_code_hash = $2, updated_at = $3 WHERE id = $1`,
   bumpCompletionCodeAttempts: `
