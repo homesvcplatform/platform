@@ -4,7 +4,7 @@
 import { randomBytes } from 'node:crypto';
 import type { Queryable } from '@hsp/db';
 import {
-  ADJACENCY, ADMINS, CATEGORIES, CITY, CUSTOMERS, FIXTURE_EPOCH, fixtureRowId, LOCALITIES, localityByCode, MATERIALS, must,
+  ADJACENCY, ADMINS, CATEGORIES, CITY, CUSTOMERS, FIXTURE_EPOCH, fixtureRowId, LOCALITIES, LOCALITY_ALIASES, localityByCode, MATERIALS, must,
   RATE_CARDS, REPAIR_ITEMS, SERVICE_TYPES, serviceTypeId, specializationId, SYMPTOMS, TECHNICIANS, warrantyDays, ZONES,
 } from '../fixtures/kurnool.ts';
 import { blindIndexFixture, encryptFixture, FIXTURE_KEY_REF, maskPhone } from '../fixtures/synthetic-crypto.ts';
@@ -58,6 +58,12 @@ export async function loadSyntheticSeed(db: Queryable): Promise<SeedSummary> {
     await run(
       `INSERT INTO geo.locality_adjacency (locality_id, neighbor_id, travel_minutes_typical, source) VALUES ($1, $2, $3, 'OPS_CURATED') ON CONFLICT DO NOTHING`,
       [e.from, e.to, e.minutes],
+    );
+  }
+  for (const a of LOCALITY_ALIASES) {
+    await run(
+      `INSERT INTO geo.locality_aliases (id, locality_id, alias, script, normalized) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
+      [fixtureRowId('geo.locality_aliases', `${a.locality}/${a.normalized}`), localityByCode(a.locality).id, a.alias, a.script, a.normalized],
     );
   }
 

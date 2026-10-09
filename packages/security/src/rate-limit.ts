@@ -89,6 +89,8 @@ export const RATE_RULES = {
   otpVerifyPerIp: { name: 'otp_verify_ip', capacity: 60, windowSec: 3600 },
   refreshPerSession: { name: 'refresh_session', capacity: 30, windowSec: 3600 },
   read: { name: 'read', capacity: 120, windowSec: 60 },
+  /** Anonymous public reference reads (catalog, geo): per client IP (04 §5). */
+  publicRead: { name: 'public_read', capacity: 30, windowSec: 60 },
   write: { name: 'write', capacity: 30, windowSec: 60 },
   critical: { name: 'critical', capacity: 10, windowSec: 60 },
   admin: { name: 'admin', capacity: 120, windowSec: 60 },
