@@ -266,7 +266,7 @@
 - **Revisit when:** the managed database exists (adopt pg_partman / pgaudit, re-run migrations and the grant matrix on RDS: TE-02 restriction 8), or Gate 10/11 implements the IVR-completion routing decided in item 9.
 
 ## ADR-024: Gate 3 identity, authentication and authorization decisions (Phase 2 implementation addendum)
-- **Status:** Proposed with Gate 3 (2026-10-09). Founder acceptance is part of the Gate 3 review. Items implement approved decisions (05, 11, 13, errata G-6, SR-02, SR-03, SR-06, SR-07, SR-10, SR-14, X-14, X-32) or record a necessary choice the Phase 1 text left open.
+- **Status:** **Accepted** by the founder (2026-10-09) at the Gate 3 closure: PR #7 merged into `gate3/identity-auth`, then PR #6 merged into `main` (`a504672`), CI green. Accepted with it: #1 (decorator-free backend framework compatible with Node type stripping; the exact library is a later decision before the first served endpoint) and R12 (session revocation SECURITY_ADMIN only). Proposed with Gate 3 (2026-10-09). Items implement approved decisions (05, 11, 13, errata G-6, SR-02, SR-03, SR-06, SR-07, SR-10, SR-14, X-14, X-32) or record a necessary choice the Phase 1 text left open.
 - **Context:** Gate 3 runs under TE-02 (founder decision 2026-10-09): local and GitHub CI only, synthetic fixtures, fake SMS, a test IdP and `kms-local`; no AWS, production, real PII, payments, telephony or KYC.
 
 | # | Decision | Reasoning / trade-off |

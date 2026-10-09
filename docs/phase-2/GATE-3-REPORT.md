@@ -1,7 +1,7 @@
 # Gate 3 Review: Identity, authentication, authorization
 
-> Date: 2026-10-09 · Decision: **PASS WITH CONDITIONS** (see §6) · Started under **TE-02** (founder decision 2026-10-09, restriction 7 amended). Local and GitHub CI only, synthetic fixtures, fake SMS, test IdP, `kms-local`. No AWS, production, real PII, payments, telephony or KYC. Gate 4 **not started**.
-> Branch `gate3/identity-auth`, [PR #6](https://github.com/homesvcplatform/platform/pull/6) (draft; the founder squash-merges). Decisions: [ADR-024](../phase-1/15-architecture-decisions.md#adr-024-gate-3-identity-authentication-and-authorization-decisions-phase-2-implementation-addendum) (Proposed).
+> Date: 2026-10-09 · Decision: **PASS WITH CONDITIONS** (see §6) · **Closed 2026-10-09: implementation complete and merged to `main`** (§7) · Started under **TE-02** (founder decision 2026-10-09, restriction 7 amended). Local and GitHub CI only, synthetic fixtures, fake SMS, test IdP, `kms-local`. No AWS, production, real PII, payments, telephony or KYC. Gate 4 **not started**.
+> Branch `gate3/identity-auth`: review fixes [PR #7](https://github.com/homesvcplatform/platform/pull/7) merged into it, then [PR #6](https://github.com/homesvcplatform/platform/pull/6) merged into `main` as `a504672` (§2b). Decisions: [ADR-024](../phase-1/15-architecture-decisions.md#adr-024-gate-3-identity-authentication-and-authorization-decisions-phase-2-implementation-addendum) (Accepted 2026-10-09).
 
 ## 1. Scope delivered vs planned ([03 §Gate 3](03-phase-2-gates.md#gate-3-identity-authentication-authorization))
 | Planned | Delivered |
@@ -45,12 +45,18 @@ Supporting: `@hsp/errors` (problem+json, no internals), `@hsp/contracts` auth/ad
 ### 2a. Issues found and fixed by CI before green
 squawk lock-rule waivers on the empty `subject_keys` primary-key change; a JWT-shaped literal in a test (Semgrep); a permission CHECK that rejected wildcard families; the `roleCode` audit field (the audit validator refuses names containing `code`); the seed loader's subject-key insert (new `data_class`); a `credential_id` CHECK over PostgreSQL's regex repetition limit; adapters given an explicit test env (Vitest adds `PROD` to `process.env`, which the no-production guard correctly refuses).
 
+### 2b. Merged state (closure evidence)
+- [PR #7](https://github.com/homesvcplatform/platform/pull/7) (review fixes R1–R12, ADR-024 #1 decision) merged into `gate3/identity-auth` on 2026-10-09 09:39:59 UTC as `48e66b8`. CI [run 37912743221](https://github.com/homesvcplatform/platform/actions/runs/37912743221) on `48e66b8`: every job succeeded (`supply-chain-selftest` skipped by design, TE-01).
+- [PR #6](https://github.com/homesvcplatform/platform/pull/6) then merged into `main` on 2026-10-09 09:42:57 UTC as `a504672`. CI [run 37913053137](https://github.com/homesvcplatform/platform/actions/runs/37913053137) on `main` at `a504672`: every job succeeded (`supply-chain-selftest` skipped by design). From the `verify` log: **219/219 unit tests**, squawk "0 issues in 29 files", **test:db 171/171 tests** (`admin.db.test.ts` 63, `migration-0029.db.test.ts` 3).
+- The tree of `main` at `a504672` is identical to the last reviewed PR #7 head `9f6db6c`: no conflicts and no change introduced by either merge.
+- The `Sensitive paths review` workflow fails on these heads because no second human reviewer exists; it is not a required check under the interim ruleset (TE-03, condition 4).
+
 ## 3. Security review notes
 - New threat surface is limited to framework-neutral handlers; no endpoint is served yet (ADR-024 #1).
 - The audit chain serialises audited commits per month (head lock); acceptable at pilot volume.
 - After an erasure, a process that already holds the subject's data key in its cache may still decrypt for up to 5 minutes (SR-06 bound); a process with a cold cache can't decrypt at all. Erasure does not revoke other processes' caches immediately. Tested across independent instances (review fix R6).
 - Identity users are created at OTP request (ADR-024 #6); never-verified rows need the retention job.
-- **The WebAuthn CBOR decoder is custom code without an independent security review** (ADR-024 #2). Hardened after review finding R4 and tested against the software authenticator and malformed-input cases, but **not reviewed**: passkey ceremonies are refused outside `local` / `test` in code until a scoped security review passes (§6 condition 2).
+- **The WebAuthn CBOR decoder is custom code without an independent security review** (ADR-024 #2). Hardened after review finding R4 and tested against the software authenticator and malformed-input cases, but **not reviewed**: passkey ceremonies are refused outside `local` / `test` in code until a scoped security review passes (§6 condition 1).
 - The voice role has no DB grant on `identity.subject_keys`, so IVR can't reveal contact data yet (needed with the IVR gates; a grant migration then).
 
 ### 3a. Review fixes (2026-10-09)
@@ -89,12 +95,20 @@ Two independent AI review reports were verified finding by finding (ADR-024 R1�
 Real KMS key policies per data class and per role (`kms-local` enforces the same grants in CI), Secrets Manager for peppers and signing keys, the asymmetric KMS signing key, BFF↔api mTLS, Valkey, CloudTrail decrypt-rate alarms (SR-06), the zero-trust proxy in front of `admin-api`.
 
 ## 6. Conditions (why PASS WITH CONDITIONS)
-1. **ADR-024 acceptance.** Item #1 is decided (decorator-free framework, NestJS rejected); the exact HTTP library is a follow-up decision before the first served endpoint.
-2. **Scoped security review of the custom WebAuthn CBOR decoder and passkey verification** (ADR-024 #2, hardened per R4) **before any real admin passkey is registered or used.** Not done; Gate 3 has used test authenticators only, and the code refuses passkey ceremonies outside `local` / `test` until the review outcome is recorded.
-3. **AWS-dependent checks** (§5), recorded when AWS resumes (TE-02 removal condition, amended), including the shared atomic (Valkey) rate-limit store that deployed compositions now require.
-4. **SR-02 browser-storage E2E** (no tokens in localStorage / sessionStorage / IndexedDB) and the cookie-flag check in a real browser run with the PWA (Gate 8); Gate 3 proves it at the API level (no token in any browser-surface response).
-5. **R12 restriction:** session revocation is SECURITY_ADMIN only (decided, §3a). Widening it to SUPPORT_L2 / SAFETY_OFFICER needs city / region semantics for users first.
-6. Gate 1 and Gate 2 conditions are unchanged, including TE-03: `two-reviewers-for-sensitive-paths` becomes a required check only with the final ruleset (owner action, §3a).
+1. **Independent, qualified security review of the custom WebAuthn CBOR decoder and passkey verification** (ADR-024 #2, hardened per R4) **before any real admin passkey is enabled, registered or used.** Not done; Gate 3 has used test authenticators only, and the code refuses passkey ceremonies outside `local` / `test` until the review outcome is recorded (`WEBAUTHN_INDEPENDENT_REVIEW_PASSED = false`).
+2. **AWS-dependent production security checks** (§5) remain deferred until AWS is available, and are recorded when AWS resumes (TE-02 removal condition, amended). This includes the shared atomic (Valkey) rate-limit store that deployed compositions now require.
+3. **SR-02 browser-storage E2E** (no tokens in localStorage / sessionStorage / IndexedDB) and the cookie-flag check in a real browser run with the PWA remain a **Gate 8** condition; Gate 3 proves it at the API level (no token in any browser-surface response).
+4. **Final two-reviewer GitHub ruleset** (TE-03): `two-reviewers-for-sensitive-paths` becomes a required check, with 1 approval and code-owner review, only when the final ruleset (`.github/rulesets/main-protection.json`) is applied. Pending until a second human reviewer exists (owner action, §3a).
+5. **Exact HTTP library** (ADR-024 #1 follow-up): which decorator-free framework / library to use remains a separate decision before the first served endpoint (Gate 5/8).
+6. **Gate 1 and Gate 2 carried conditions** remain tracked unchanged (GATE-1-REPORT / GATE-1-CLOSURE-CHECKLIST, GATE-2-REPORT §6).
+
+Resolved at closure (no longer conditions): ADR-024 acceptance, including #1 (decorator-free backend framework); the R12 session-revocation decision (§3a). The R12 restriction itself stays in force: widening session revocation beyond SECURITY_ADMIN needs city / region semantics for users first.
 
 ## 7. Decision
-**PASS WITH CONDITIONS**. Every PR #6 check is green on GitHub (§2). Approver: founder (on merge of PR #6). Gate 4 not started.
+**PASS WITH CONDITIONS. Gate 3 is closed (2026-10-09).** Approver: founder, by merging PR #7 into `gate3/identity-auth` and then PR #6 into `main` (`a504672`); CI on that `main` commit is green (§2b).
+
+- Gate 3 implementation is complete and merged.
+- ADR-024 is accepted, including #1: a **decorator-free backend framework compatible with Node type stripping** (NestJS legacy decorators rejected; the exact library is condition 5).
+- The R12 decision is accepted: **session revocation of other users is SECURITY_ADMIN only** (global grant, reason required); SUPPORT_L2 and SAFETY_OFFICER have no session-revocation capability.
+- The conditions in §6 stay open and tracked.
+- Gate 4 is **not started** and needs the founder's explicit approval.
