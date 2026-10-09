@@ -15,5 +15,12 @@ blockExoticSubdeps: true
 # Transitive pin (Gate 2): vite 8.3.0 accepts rolldown ~1.2.6. The Gate 1 lockfile had resolved rolldown 1.2.13,
 # published one day earlier, which violates ADR-022 #3 (versions >= 2 weeks old) and minimumReleaseAge above.
 # 1.2.11 (2026-09-24) satisfies both. Remove when Dependabot proposes a mature vite/rolldown pair.
+# Transitive pin (Gate 5, ADR-026 #3): graphile-worker 0.18.0 -> graphile-config 0.0.1-beta.18 asks for @types/node
+# ^22.16.3. Every @types/node 22.x in that range needs undici-types ~6.21.0, and 6.21.0 (the only match) is refused by
+# trustPolicy above (no provenance while earlier versions had it). Types only (nothing is loaded at runtime): this one
+# edge uses the repository's own Node 24 types (24.13.6, already trusted, matching the Node 24 runtime). Scoped to that
+# exact graphile-config version, so an upgrade is resolved and trust-checked afresh. The trust policy is unchanged.
+# Remove when graphile-config widens its range or undici-types 6.21.x publishes with provenance.
 overrides:
   rolldown: 1.2.11
+  graphile-config@0.0.1-beta.18>@types/node: 24.13.6

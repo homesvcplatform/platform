@@ -6,8 +6,10 @@ import { createTestDatabase, inRollback, sqlState, type TestDatabase } from '../
 
 // 03 §12.2 list as built in Gate 2 (+ immutable records from 03 §14.4). verification_records,
 // trust.safety_incident_events and voice.ivr_interactions are created with their gates and join this list then.
+// Gate 5 (0033): the transition table and the assignment history.
 const EXPECTED = [
   'compliance.audit_logs', 'compliance.consent_events', 'compliance.disclosure_events', 'diagnosis.quote_approvals',
+  'jobs.allowed_transitions', 'jobs.assignment_status_history',
   'jobs.job_cancellations', 'jobs.job_status_history', 'jobs.repair_order_status_history', 'jobs.visit_presence_proofs',
   'jobs.visit_status_history', 'ledger.accounts', 'ledger.entries', 'ledger.transactions', 'payments.bill_lines',
   'payments.invoices', 'pricing.price_snapshots', 'workforce.technician_daily_checkins',
@@ -42,7 +44,8 @@ describe('append-only tables', () => {
               EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgrelid = c.oid AND t.tgname = 'append_only_rows') AS guarded
          FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE i.inhparent IN ('compliance.audit_logs'::regclass, 'compliance.disclosure_events'::regclass, 'jobs.job_status_history'::regclass,
-                              'jobs.visit_status_history'::regclass, 'jobs.repair_order_status_history'::regclass)`,
+                              'jobs.visit_status_history'::regclass, 'jobs.repair_order_status_history'::regclass,
+                              'jobs.assignment_status_history'::regclass)`,
     );
     expect(r.rows.length).toBeGreaterThanOrEqual(25);
     for (const row of r.rows) expect(row.guarded, row.partition).toBe(true);

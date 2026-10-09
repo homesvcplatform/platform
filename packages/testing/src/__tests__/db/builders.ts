@@ -24,7 +24,14 @@ export async function priceSnapshot(c: pg.Client): Promise<string> {
   return snap;
 }
 
+/** Gate 5 (migration 0033): status changes need the transaction-local actor context the application sets. */
+export async function actorContext(c: pg.Client): Promise<void> {
+  await c.query(`SELECT set_config('hsp.actor_type', 'SYSTEM', true), set_config('hsp.channel', 'TEST', true),
+                        set_config('hsp.correlation_id', $1, true)`, [newId()]);
+}
+
 export async function job(c: pg.Client, overrides: Record<string, unknown> = {}): Promise<string> {
+  await actorContext(c);
   const row: Record<string, unknown> = {
     id: newId(), public_ref: publicRef(), customer_user_id: newId(), city_id: newId(), zone_id: newId(), locality_id: newId(),
     service_type_id: newId(), address_id: newId(), address_snapshot_enc: randomBytes(24), channel: 'PWA',

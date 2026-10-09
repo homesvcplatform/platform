@@ -11,9 +11,10 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "pg": "8.23.0",
     "@hsp/kernel": "workspace:*",
-    "@hsp/observability": "workspace:*"
+    "@hsp/observability": "workspace:*",
+    "graphile-worker": "0.18.0",
+    "pg": "8.23.0"
   },
   "devDependencies": {
     "@types/pg": "8.23.1"

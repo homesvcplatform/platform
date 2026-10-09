@@ -146,7 +146,7 @@ beforeAll(async () => {
   const logger = createLogger('hsp-change-test', 'debug', (l) => logs.push(l), () => clock.now());
   app = composeAdminApi({
     pool, clock, logger, idp: idp.config, webauthn: { rpId: RP_ID, origin: ORIGIN }, csrfKey: randomBytes(32), requestHashKey: randomBytes(32),
-    allowedOrigins: [ORIGIN], appEnv: 'test', rateLimitStore: new MemoryRateLimitStore(),
+    allowedOrigins: [ORIGIN], appEnv: 'test', rateLimitStore: new MemoryRateLimitStore(), jobsCodeKey: randomBytes(32),
     identity: { kms: createEphemeralKeyring(env).forRole('admin-api'), keys: { otpPepper: randomBytes(32), blindIndexPepper: randomBytes(32),
       refreshRotationKey: randomBytes(32), csrfKey: randomBytes(32), requestHashKey: randomBytes(32) }, tokenSigner: signing.signer,
       tokenVerificationKeys: signing.publicKeys, issuer: 'https://auth.test.invalid' },

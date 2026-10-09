@@ -152,6 +152,12 @@ export class CatalogService {
     return (await this.getServiceRules(serviceTypeId, cityId, at))?.enabled === true;
   }
 
+  /** Codes of the ACTIVE symptoms of a service type (booking validation). */
+  async symptomCodes(serviceTypeId: string): Promise<string[]> {
+    if (!UUID.test(serviceTypeId)) return [];
+    return ((await this.#d.pool.query(SQL.symptoms, [serviceTypeId])).rows as Row[]).map((r) => r['code'] as string);
+  }
+
   async getRepairItems(serviceTypeId: string): Promise<RepairItem[]> {
     if (!UUID.test(serviceTypeId)) return [];
     return ((await this.#d.pool.query(SQL.repairItems, [serviceTypeId])).rows as Row[]).map(repairItem);

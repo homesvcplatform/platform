@@ -158,7 +158,7 @@ Permissions are **defined in code** (an enumerated, versioned list, so they can'
 | **Verification officer** | `verification.read_documents`, `verification.decide`, `technicians.onboarding.update`, `skills.verify` | city |
 | **Safety officer** | `safety.read`, `safety.ack`, `safety.hold`, `trust.sanction.propose`, `trust.suspend_pending_investigation` (≤ 72 h, no approval), `pii.reveal.*` for incident subjects, `recordings.read` (incident-linked) | region |
 | **Finance** | `payments.read`, `payments.refund.approve`, `finance.payout.prepare`, `finance.payout.approve` (not own batch), `finance.payout_method.reveal`, `finance.writeoff` (maker), `reconciliation.*` | global |
-| **City manager** | approvals for: `pricing.approve`, `zones.approve`, `trust.sanction.approve`, `service_rules.approve`, `presence_override.approve`. Read analytics. | city |
+| **City manager** | approvals for: `pricing.approve`, `zones.approve`, `trust.sanction.approve`, `service_rules.approve`, `presence_override.approve`. Read analytics. Manual assignment (`dispatch.assign`, §11 matrix; ADR-026 #13) | city |
 | **Pricing admin** | `pricing.edit` (maker), `catalog.edit`, `service_rules.edit` | city |
 | **Auditor** | `audit.read`, `config.read`, read-only on all queues, **no PII reveal** | global |
 | **Security admin** | `security.grant` (maker), `security.grant.approve` (not own), `security.sessions.revoke`, `security.access_review` | global |

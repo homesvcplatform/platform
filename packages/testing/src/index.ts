@@ -12,3 +12,4 @@ export type { SoftAuthenticator, TestIdp } from './auth-fakes.ts';
 export { generateMatrixCases, placeholderAction } from './authz-matrix.ts';
 export type { ImplementedCapability, MatrixCase } from './authz-matrix.ts';
 export { CANARY, findCanaries } from './canary.ts';
+export { startStuckTimerRunner } from './timers.ts';

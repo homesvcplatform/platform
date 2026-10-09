@@ -5,6 +5,8 @@
 export const ERROR_STATUS = {
   VALIDATION_FAILED: 400,
   OTP_INVALID: 400,
+  SLOT_UNAVAILABLE: 400,
+  CODE_INCORRECT: 400,
   UNAUTHENTICATED: 401,
   SESSION_REVOKED: 401,
   STEP_UP_REQUIRED: 401,
@@ -16,7 +18,11 @@ export const ERROR_STATUS = {
   STALE_VERSION: 409,
   INVALID_STATE: 409,
   REQUEST_IN_PROGRESS: 409,
+  POSSIBLE_DUPLICATE: 409,
+  PRICE_CHANGED: 409,
   IDEMPOTENCY_KEY_REUSED: 422,
+  NOT_SERVICEABLE: 422,
+  CODE_LOCKED: 423,
   RATE_LIMITED: 429,
   BOT_CHECK_REQUIRED: 429,
   PROVIDER_UNAVAILABLE: 503,
@@ -30,14 +36,18 @@ export class AppError extends Error {
   readonly status: number;
   readonly retryAfterSec: number | undefined;
   readonly fields: readonly { readonly path: string; readonly code: string }[];
+  /** Client-safe extra facts named by the API contract (ids, amounts, counters only), e.g. `existingJobId`, `attemptsLeft`. */
+  readonly details: Readonly<Record<string, string | number | boolean>>;
 
-  constructor(code: ErrorCode, opts: { retryAfterSec?: number; fields?: readonly { path: string; code: string }[] } = {}) {
+  constructor(code: ErrorCode, opts: { retryAfterSec?: number; fields?: readonly { path: string; code: string }[];
+    details?: Readonly<Record<string, string | number | boolean>> } = {}) {
     super(code);
     this.name = 'AppError';
     this.code = code;
     this.status = ERROR_STATUS[code];
     this.retryAfterSec = opts.retryAfterSec;
     this.fields = opts.fields ?? [];
+    this.details = opts.details ?? {};
   }
 }
 
@@ -49,6 +59,7 @@ export interface Problem {
   readonly detailKey: string;
   readonly requestId: string;
   readonly fields?: readonly { readonly path: string; readonly code: string }[];
+  readonly details?: Readonly<Record<string, string | number | boolean>>;
 }
 
 const titleOf = (code: ErrorCode) => code.toLowerCase().replaceAll('_', ' ').replace(/^./, (c) => c.toUpperCase());
@@ -64,5 +75,6 @@ export function toProblem(error: unknown, requestId: string, errorBaseUrl = 'htt
     detailKey: `errors.${app.code.toLowerCase()}`,
     requestId,
     ...(app.fields.length > 0 ? { fields: app.fields } : {}),
+    ...(Object.keys(app.details).length > 0 ? { details: app.details } : {}),
   };
 }

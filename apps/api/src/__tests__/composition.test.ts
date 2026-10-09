@@ -19,7 +19,7 @@ function compose(appEnv: AppEnvironment, rateLimitStore: RateLimitStore | undefi
     issuer: 'https://auth.test.invalid', keys: { otpPepper: randomBytes(32), blindIndexPepper: randomBytes(32), refreshRotationKey: randomBytes(32),
       csrfKey: randomBytes(32), requestHashKey: randomBytes(32) }, otpSender: { sendOtp: async () => ({ accepted: false }) },
     eligibility: { isEligible: async () => false }, botVerifier: { verify: async () => false }, phonePolicy: 'RESERVED_TEST_RANGE_ONLY',
-    allowedWebOrigins: [], appEnv, rateLimitStore,
+    allowedWebOrigins: [], appEnv, rateLimitStore, jobsCodeKey: randomBytes(32),
   });
 }
 

@@ -10,5 +10,9 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@hsp/db": "workspace:*",
+    "@hsp/kernel": "workspace:*"
   }
 }

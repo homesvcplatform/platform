@@ -76,6 +76,8 @@ describe('grant matrix', () => {
       'compliance.disclosure_events': ['INSERT'],
       'identity.ivr_credentials': ['SELECT', 'UPDATE'],
       'identity.users': ['SELECT'],
+      'jobs.allowed_transitions': ['SELECT'],
+      'jobs.assignment_status_history': ['INSERT'],
       'jobs.assignments': ['INSERT', 'SELECT', 'UPDATE'],
       'jobs.job_status_history': ['INSERT'],
       'jobs.jobs': ['SELECT', 'UPDATE'],
