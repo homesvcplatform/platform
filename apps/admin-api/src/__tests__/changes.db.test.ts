@@ -31,6 +31,8 @@ let app: ReturnType<typeof composeAdminApi>;
 let publicCatalog: CatalogService;
 let issuesOverride: CatalogIssue[] | undefined;
 const clock = new ManualClock(new Date());
+/** The public catalog reads on its own clock, so moving read time forward doesn't idle-expire the admin sessions (30 min). */
+const readClock = new ManualClock(clock.now());
 const idp = createTestIdp();
 const logs: string[] = [];
 const admins: Record<string, string> = {};
@@ -155,8 +157,8 @@ beforeAll(async () => {
   registerCatalogPolicies(policies);
   registerGeoPolicies(policies);
   const rateLimiter = createRateLimiter(new MemoryRateLimitStore());
-  const geo = new GeoService({ pool: apiPool, clock, logger, policies, rateLimiter, appEnv: 'test' });
-  publicCatalog = new CatalogService({ pool: apiPool, clock, logger, policies, rateLimiter, cities: geo });
+  const geo = new GeoService({ pool: apiPool, clock: readClock, logger, policies, rateLimiter, appEnv: 'test' });
+  publicCatalog = new CatalogService({ pool: apiPool, clock: readClock, logger, policies, rateLimiter, cities: geo });
 
   for (const n of ['fixture-maker', 'fixture-checker', 'prc', 'cm', 'cm-other', 'both', 'prc-global', 'cm-global', 'support', 'prc-locale', 'cm-locale']) await seedAdmin(n);
   const knl = { kind: 'CITIES' as const, cityIds: [CITY.id] };
@@ -220,7 +222,7 @@ describe('service rules: two-person approved, shown without a deploy (exit crite
     const id = await proposeOk(prc, 'catalog.service_rules.set', ruleChange('MICROWAVE', true, CITY.id, { effectiveFrom: from }));
     expect((await decide(cm, id, 'APPROVE')).body).toEqual({ status: 'EXECUTED' });
     expect(await offered()).not.toContain('MICROWAVE');
-    clock.advance(2 * 3_600_000 + 1_000);
+    readClock.advance(2 * 3_600_000 + 1_000);
     expect(await offered()).toContain('MICROWAVE');
   });
 

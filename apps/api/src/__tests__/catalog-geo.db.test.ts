@@ -32,11 +32,14 @@ async function offered(cityId: string = CITY.id, locale?: string): Promise<Categ
 }
 const codes = (c: Categories) => c.categories.flatMap((x) => x.serviceTypes.map((t) => t.code)).sort();
 
-/** A rule written as data (stands in for an approved change; the admin flow is tested in admin-api). */
+/** A rule written as data (stands in for an approved change; the admin flow is tested in admin-api). Same cut / retire as execution. */
 async function setCityRule(code: string, rules: unknown, cityId: string | null = CITY.id, from = h.clock.now()) {
   const st = serviceTypeId(code);
   await h.db.migrator.query(`UPDATE catalog.service_rules SET effective = tstzrange(lower(effective), $3)
-    WHERE service_type_id = $1 AND city_id IS NOT DISTINCT FROM $2::uuid AND status = 'ACTIVE' AND lower(effective) < $3 AND upper_inf(effective)`, [st, cityId, from]);
+    WHERE service_type_id = $1 AND city_id IS NOT DISTINCT FROM $2::uuid AND status = 'ACTIVE' AND lower(effective) < $3
+      AND (upper_inf(effective) OR upper(effective) > $3)`, [st, cityId, from]);
+  await h.db.migrator.query(`UPDATE catalog.service_rules SET status = 'RETIRED'
+    WHERE service_type_id = $1 AND city_id IS NOT DISTINCT FROM $2::uuid AND status = 'ACTIVE' AND lower(effective) >= $3`, [st, cityId, from]);
   await h.db.migrator.query(`INSERT INTO catalog.service_rules (id, service_type_id, city_id, rules, effective, status)
     VALUES ($1, $2, $3, $4, tstzrange($5, NULL), 'ACTIVE')`, [newId(), st, cityId, JSON.stringify(rules), from]);
 }
