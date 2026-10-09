@@ -91,19 +91,20 @@ export const SQL = {
   // Sweeper (06 §13: overdue states are repaired within ~1 minute even if a timer was lost).
   overduePlanned: `
     SELECT id FROM jobs.visits WHERE status = 'PLANNED'
-       AND (urgency = 'ASAP' OR lower(service_window) - make_interval(secs => $2 / 1000.0) <= $1) LIMIT $3`,
+       AND (urgency = 'ASAP' OR lower(service_window) - make_interval(secs => $2::numeric / 1000.0) <= $1) LIMIT $3`,
   overdueMatching: `
     SELECT id FROM jobs.visits WHERE status = 'MATCHING'
-       AND matching_since + make_interval(secs => (CASE WHEN urgency = 'ASAP' THEN $2 ELSE $3 END) / 1000.0) <= $1 LIMIT $4`,
+       AND matching_since + make_interval(secs => (CASE WHEN urgency = 'ASAP' THEN $2::numeric ELSE $3::numeric END) / 1000.0) <= $1::timestamptz
+     LIMIT $4`,
   overdueNoShow: `
     SELECT v.id FROM jobs.visits v
      WHERE v.status IN ('ASSIGNED','EN_ROUTE') AND v.arrived_at IS NULL
-       AND lower(v.service_window) + make_interval(secs => $2 / 1000.0) <= $1
+       AND lower(v.service_window) + make_interval(secs => $2::numeric / 1000.0) <= $1
        AND NOT EXISTS (SELECT 1 FROM jobs.visit_waits w WHERE w.visit_id = v.id AND w.ended_at IS NULL) LIMIT $3`,
   overdueWaits: `
     SELECT w.visit_id AS id FROM jobs.visit_waits w JOIN jobs.visits v ON v.id = w.visit_id
-     WHERE w.ended_at IS NULL AND v.status = 'EN_ROUTE' AND w.started_at + make_interval(secs => $2 / 1000.0) <= $1 LIMIT $3`,
+     WHERE w.ended_at IS NULL AND v.status = 'EN_ROUTE' AND w.started_at + make_interval(secs => $2::numeric / 1000.0) <= $1::timestamptz LIMIT $3`,
   overdueOverrun: `
     SELECT v.id FROM jobs.visits v JOIN jobs.jobs j ON j.id = v.job_id
-     WHERE v.status = 'IN_PROGRESS' AND NOT j.needs_attention AND v.arrived_at + make_interval(secs => $2 / 1000.0) <= $1 LIMIT $3`,
+     WHERE v.status = 'IN_PROGRESS' AND NOT j.needs_attention AND v.arrived_at + make_interval(secs => $2::numeric / 1000.0) <= $1::timestamptz LIMIT $3`,
 } as const;
