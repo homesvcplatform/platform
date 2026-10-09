@@ -329,7 +329,14 @@ importers:
 
   packages/modules/comms: {}
 
-  packages/modules/compliance: {}
+  packages/modules/compliance:
+    dependencies:
+      '@hsp/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@hsp/kernel':
+        specifier: workspace:*
+        version: link:../../kernel
 
   packages/modules/config: {}
 
@@ -444,6 +451,9 @@ importers:
       '@hsp/localization':
         specifier: workspace:*
         version: link:../../localization
+      '@hsp/module-pricing':
+        specifier: workspace:*
+        version: link:../pricing
       '@hsp/observability':
         specifier: workspace:*
         version: link:../../observability
@@ -495,7 +505,15 @@ importers:
 
   packages/modules/warranty: {}
 
-  packages/modules/workforce: {}
+  packages/modules/workforce:
+    dependencies:
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
+    devDependencies:
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
 
   packages/money: {}
 

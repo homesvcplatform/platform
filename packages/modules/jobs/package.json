@@ -17,6 +17,7 @@
     "@hsp/errors": "workspace:*",
     "@hsp/kernel": "workspace:*",
     "@hsp/localization": "workspace:*",
+    "@hsp/module-pricing": "workspace:*",
     "@hsp/observability": "workspace:*",
     "@hsp/policy": "workspace:*",
     "@hsp/security": "workspace:*",
