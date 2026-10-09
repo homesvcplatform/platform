@@ -156,6 +156,11 @@ export async function loadSyntheticSeed(db: Queryable): Promise<SeedSummary> {
     for (const [feeType, params] of [
       ['PLATFORM_FEE', { bps: 1000, fixture: 'NOT_FINAL' }],
       ['DIAGNOSIS_PAYOUT', { amount_paise: 10000, fixture: 'NOT_FINAL' }],
+      // Gate 5 lifecycle fees (06 §10), test values only, NOT FINAL.
+      ['CANCELLATION', { free_cancel_lead_minutes: 120, late_cancel_paise: 4900, en_route_paise: 9900, technician_share_bps: 7500, fixture: 'NOT_FINAL' }],
+      ['NO_SHOW', { customer_fee_paise: 9900, technician_compensation_paise: 7500, fixture: 'NOT_FINAL' }],
+      ['WAITING', { grace_minutes: 10, per_minute_paise: 200, cap_paise: 6000, technician_share_bps: 7500, fixture: 'NOT_FINAL' }],
+      ['TRAVEL_COMPENSATION', { amount_paise: 5000, fixture: 'NOT_FINAL' }],
     ] as const) {
       await run(
         `INSERT INTO pricing.fee_rules (id, rate_card_id, fee_type, params) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
