@@ -27,6 +27,23 @@ export const grantRequest = z.strictObject({
   expiresAt: z.iso.datetime().optional(),
 });
 
+/** The step-up returned by POST /admin/v1/step-up, bound by the server to this approval request and its payload. */
 export const approvalDecision = z.strictObject({
   decision: z.enum(['APPROVE', 'REJECT']),
+  stepUpId: z.uuid(),
+});
+
+/**
+ * The client selects one server-defined operation; the server binds the resource (approval request + payload hash).
+ * A grant-decision step-up is also bound to the decision it will be used for.
+ */
+export const stepUpOptions = z.strictObject({
+  operation: z.enum(['security.grant.decide', 'backoffice.passkey.register']),
+  approvalRequestId: z.uuid().optional(),
+  decision: z.enum(['APPROVE', 'REJECT']).optional(),
+});
+
+/** Needed only for an additional passkey (a step-up bound to backoffice.passkey.register). */
+export const passkeyRegistrationOptions = z.strictObject({
+  stepUpId: z.uuid().optional(),
 });

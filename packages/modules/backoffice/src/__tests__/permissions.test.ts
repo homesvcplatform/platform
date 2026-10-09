@@ -37,17 +37,22 @@ describe('backoffice policies', () => {
     ['security.grant', [{ kind: 'GLOBAL' }]], ['security.grant.approve', [{ kind: 'GLOBAL' }]]]), ...extra });
   const grant = { granteeId: 'g', requesterId: 'm' };
 
-  it('no self-grant; the checker is neither the maker nor the grantee and has a fresh passkey step-up', () => {
+  it('no self-grant; the checker is neither the maker nor the grantee (the step-up is enforced in the decision transaction)', () => {
     expect(r.can(sec('m'), 'backoffice.grant.request', grant, { now })).toEqual(ALLOW);
     expect(r.can(sec('g'), 'backoffice.grant.request', { granteeId: 'g', requesterId: 'g' }, { now })).toMatchObject({ reason: 'SELF_GRANT' });
-    const fresh = { stepUpAt: new Date(now.getTime() - 60_000) };
-    expect(r.can(sec('c', fresh), 'backoffice.grant.decide', grant, { now })).toEqual(ALLOW);
-    expect(r.can(sec('m', fresh), 'backoffice.grant.decide', grant, { now })).toMatchObject({ reason: 'CHECKER_CONFLICT' });
-    expect(r.can(sec('g', fresh), 'backoffice.grant.decide', grant, { now })).toMatchObject({ reason: 'CHECKER_CONFLICT' });
-    expect(r.can(sec('c'), 'backoffice.grant.decide', grant, { now })).toMatchObject({ reason: 'STEP_UP_REQUIRED' });
-    expect(r.can(sec('c', { stepUpAt: new Date(now.getTime() - 6 * 60_000) }), 'backoffice.grant.decide', grant, { now }))
-      .toMatchObject({ reason: 'STEP_UP_REQUIRED' });
+    expect(r.can(sec('c'), 'backoffice.grant.decide', grant, { now })).toEqual(ALLOW);
+    expect(r.can(sec('m'), 'backoffice.grant.decide', grant, { now })).toMatchObject({ reason: 'CHECKER_CONFLICT' });
+    expect(r.can(sec('g'), 'backoffice.grant.decide', grant, { now })).toMatchObject({ reason: 'CHECKER_CONFLICT' });
     expect(r.can({ kind: 'CUSTOMER', id: 'u' }, 'backoffice.grant.request', { granteeId: 'g', requesterId: 'u' }, { now }).allow).toBe(false);
+  });
+
+  it('security administration needs a GLOBAL grant: a city-scoped grant of the same permissions authorises nothing', () => {
+    const cityOnly: Actor = { kind: 'ADMIN', id: 'x', sessionId: 's-x', permissions: new Map([
+      ['security.grant', [{ kind: 'CITIES', cityIds: ['knl'] }]], ['security.grant.approve', [{ kind: 'CITIES', cityIds: ['knl'] }]]]) };
+    expect(r.can(cityOnly, 'backoffice.grant.request', grant, { now })).toMatchObject({ allow: false, reason: 'NO_CAPABILITY' });
+    expect(r.can(cityOnly, 'backoffice.grant.decide', grant, { now })).toMatchObject({ allow: false, reason: 'NO_CAPABILITY' });
+    const wildcardCity: Actor = { ...cityOnly, permissions: new Map([['security.*', [{ kind: 'CITIES', cityIds: ['knl'] }]]]) };
+    expect(r.can(wildcardCity, 'backoffice.grant.request', grant, { now }).allow).toBe(false);
   });
 });
 

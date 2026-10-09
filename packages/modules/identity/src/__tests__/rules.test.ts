@@ -64,7 +64,7 @@ describe('identity policies', () => {
   const ctx = { now: new Date() };
   const me: Actor = { kind: 'CUSTOMER', id: 'u1', sessionId: 's1', surface: 'CUSTOMER_WEB' };
 
-  it('own sessions only (404 for others); IVR cannot revoke; admins need the permission and a reason', () => {
+  it('own sessions only (404 for others); IVR cannot revoke; admins need the permission globally and a reason (R12)', () => {
     expect(r.can(me, 'identity.session.revoke', { ownerUserId: 'u1', reasonCode: null }, ctx).allow).toBe(true);
     expect(r.can(me, 'identity.session.revoke', { ownerUserId: 'u2', reasonCode: null }, ctx)).toMatchObject({ allow: false, status: 404 });
     expect(r.can({ ...me, kind: 'TECHNICIAN', surface: 'TECHNICIAN_IVR' }, 'identity.session.revoke', { ownerUserId: 'u1', reasonCode: null }, ctx).allow).toBe(false);
@@ -72,6 +72,8 @@ describe('identity policies', () => {
     expect(r.can(sec, 'identity.session.revoke', { ownerUserId: 'u1', reasonCode: 'ACCOUNT_COMPROMISE' }, ctx).allow).toBe(true);
     expect(r.can(sec, 'identity.session.revoke', { ownerUserId: 'u1', reasonCode: null }, ctx).allow).toBe(false);
     expect(r.can({ ...sec, permissions: new Map() }, 'identity.session.revoke', { ownerUserId: 'u1', reasonCode: 'X' }, ctx).allow).toBe(false);
+    const cityScoped: Actor = { ...sec, permissions: new Map([['security.sessions.revoke', [{ kind: 'CITIES', cityIds: ['c1'] }]]]) };
+    expect(r.can(cityScoped, 'identity.session.revoke', { ownerUserId: 'u1', reasonCode: 'ACCOUNT_COMPROMISE' }, ctx).allow).toBe(false);
     expect(r.can({ kind: 'ANONYMOUS' }, 'identity.session.list', {}, ctx).allow).toBe(false);
   });
 });

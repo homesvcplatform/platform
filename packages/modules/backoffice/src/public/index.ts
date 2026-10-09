@@ -8,8 +8,9 @@ export type { AdminRequest, AdminRequestMeta, BackofficeDeps, GrantInput, IdpCon
 export { registerBackofficePolicies } from '../domain/policies.ts';
 export type { GrantResource } from '../domain/policies.ts';
 export {
-  ADMIN_COOKIE, ADMIN_PERMISSIONS, ADMIN_SESSION, ADMIN_STEP_UP_MS, isKnownPermissionEntry, isPhishingResistant, PERMISSIONS_VERSION,
+  ADMIN_COOKIE, ADMIN_PERMISSIONS, ADMIN_SESSION, ADMIN_STEP_UP_MS, isKnownPermissionEntry, isPhishingResistant, passkeyCeremoniesAllowed,
+  PERMISSIONS_VERSION, STEP_UP_OPERATIONS, WEBAUTHN_INDEPENDENT_REVIEW_PASSED,
 } from '../domain/permissions.ts';
-export type { AdminPermission } from '../domain/permissions.ts';
+export type { AdminPermission, StepUpOperation } from '../domain/permissions.ts';
 /** Every backoffice SQL statement (for the B2 schema-ownership fitness test). */
 export { SQL as BACKOFFICE_SQL } from '../infrastructure/sql.ts';

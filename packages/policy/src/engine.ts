@@ -84,7 +84,10 @@ export class PolicyRegistry {
   }
 }
 
-/** True when an admin actor holds `permission` with a scope covering `cityId` (or any scope when cityId is omitted). */
+/**
+ * True when an admin actor holds `permission` with a scope covering `cityId`. Without `cityId` it accepts ANY scope
+ * (city-agnostic checks only); global-by-definition permissions must use `hasGlobalPermission`.
+ */
 export function hasPermission(actor: Actor, permission: string, cityId?: string): boolean {
   if (actor.kind !== 'ADMIN' || !actor.permissions) return false;
   // Role definitions may grant a family with a trailing wildcard ("pii.reveal.*" covers "pii.reveal.address").
@@ -94,6 +97,18 @@ export function hasPermission(actor: Actor, permission: string, cityId?: string)
   if (scopes.length === 0) return false;
   if (cityId === undefined) return true;
   return scopes.some((s) => s.kind === 'GLOBAL' || s.cityIds.includes(cityId));
+}
+
+/**
+ * True only when the admin holds `permission` through a GLOBAL grant. Use for permissions whose scope is global by
+ * definition (security administration): `hasPermission(actor, p)` without a city accepts ANY scope, including a
+ * city-only grant, and must not be used for them.
+ */
+export function hasGlobalPermission(actor: Actor, permission: string): boolean {
+  if (actor.kind !== 'ADMIN' || !actor.permissions) return false;
+  const parts = permission.split('.');
+  const names = [permission, ...parts.slice(1).map((_, i) => `${parts.slice(0, parts.length - 1 - i).join('.')}.*`)];
+  return names.some((n) => (actor.permissions?.get(n) ?? []).some((s) => s.kind === 'GLOBAL'));
 }
 
 /** True when the actor stepped up within `withinMs` of `now`. */

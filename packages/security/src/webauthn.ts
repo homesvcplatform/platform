@@ -1,7 +1,8 @@
 // WebAuthn (passkey) verification for admin login step-up and high-risk re-authentication (Phase 1 05 §2.5, SR-03).
 // Deliberately narrow: ES256 (COSE alg -7) credentials, attestation format "none" (passkeys), user presence AND user
 // verification required, exact challenge / origin / RP ID checks, and signature-counter regression detection.
-// The CBOR decoder accepts only definite-length major types 0-5 and simple values; anything else is rejected.
+// The CBOR decoder is a strict, minimal subset (see decodeCbor). NOT independently reviewed yet (ADR-024 #2): passkey
+// ceremonies are disabled outside local / test until that review passes.
 import { createPublicKey, verify as cryptoVerify, type KeyObject } from 'node:crypto';
 import { constantTimeEqual, sha256 } from './hashing.ts';
 
@@ -14,37 +15,69 @@ export class WebAuthnError extends Error {
   }
 }
 
-type Cbor = number | bigint | Buffer | string | boolean | null | Cbor[] | Map<Cbor, Cbor>;
+type Cbor = number | Buffer | string | boolean | null | Cbor[] | Map<Cbor, Cbor>;
 
-/** Decodes one CBOR item at `offset`. Returns the value and the offset after it. */
+/** Limits for WebAuthn payloads (attestation objects, COSE keys): far above what authenticators send, far below abuse. */
+export const CBOR_LIMITS = { maxBytes: 16_384, maxDepth: 8, maxItems: 64 } as const;
+const UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+
+/**
+ * Decodes one CBOR item at `offset` (RFC 8949, strict subset). Returns the value and the offset after it.
+ * Accepted: definite-length unsigned / negative integers within ±2^53, byte strings, UTF-8 text strings (strictly valid),
+ * arrays, maps with integer or text keys (no duplicates), and false / true / null. Rejected: non-minimal ("preferred
+ * serialization") integer and length encodings, indefinite lengths, tags, floats, other simple values, reserved
+ * additional-info values, truncation, more than 64 items per container, nesting deeper than 8, and inputs over 16 KiB.
+ */
 export function decodeCbor(buf: Buffer, offset = 0, depth = 0): { value: Cbor; end: number } {
-  if (depth > 16) throw new WebAuthnError('CBOR_DEPTH');
+  if (buf.length > CBOR_LIMITS.maxBytes) throw new WebAuthnError('CBOR_TOO_LARGE');
+  if (depth > CBOR_LIMITS.maxDepth) throw new WebAuthnError('CBOR_DEPTH');
   const first = buf[offset];
   if (first === undefined) throw new WebAuthnError('CBOR_TRUNCATED');
   const major = first >> 5;
   const info = first & 0x1f;
   let pos = offset + 1;
-  const readLength = (): number => {
+  /** The argument of the head, with minimal-encoding and safe-integer checks. */
+  const readArgument = (): number => {
     if (info < 24) return info;
     const size = info === 24 ? 1 : info === 25 ? 2 : info === 26 ? 4 : info === 27 ? 8 : 0;
-    if (size === 0 || pos + size > buf.length) throw new WebAuthnError('CBOR_LENGTH');
+    if (size === 0) throw new WebAuthnError(info === 31 ? 'CBOR_INDEFINITE' : 'CBOR_RESERVED');
+    if (pos + size > buf.length) throw new WebAuthnError('CBOR_TRUNCATED');
     const n = size === 8 ? buf.readBigUInt64BE(pos) : BigInt(buf.readUIntBE(pos, size));
     pos += size;
-    if (n > BigInt(buf.length)) throw new WebAuthnError('CBOR_LENGTH');
+    const minimum = size === 1 ? 24n : size === 2 ? 0x100n : size === 4 ? 0x1_0000n : 0x1_0000_0000n;
+    if (n < minimum) throw new WebAuthnError('CBOR_NON_MINIMAL');
+    if (n > BigInt(Number.MAX_SAFE_INTEGER)) throw new WebAuthnError('CBOR_INT_RANGE');
     return Number(n);
   };
+  /** A length that must fit in the remaining input (each item needs at least one byte). */
+  const readLength = (perItemBytes: number): number => {
+    const len = readArgument();
+    if (len * perItemBytes > buf.length - pos) throw new WebAuthnError('CBOR_TRUNCATED');
+    return len;
+  };
   switch (major) {
-    case 0: return { value: readLength(), end: pos };
-    case 1: return { value: -1 - readLength(), end: pos };
+    case 0: return { value: readArgument(), end: pos };
+    case 1: {
+      const n = readArgument();
+      if (n >= Number.MAX_SAFE_INTEGER) throw new WebAuthnError('CBOR_INT_RANGE');
+      return { value: -1 - n, end: pos };
+    }
     case 2:
     case 3: {
-      const len = readLength();
-      if (pos + len > buf.length) throw new WebAuthnError('CBOR_TRUNCATED');
+      const len = readLength(1);
       const bytes = buf.subarray(pos, pos + len);
-      return { value: major === 2 ? Buffer.from(bytes) : bytes.toString('utf8'), end: pos + len };
+      if (major === 2) return { value: Buffer.from(bytes), end: pos + len };
+      let text: string;
+      try {
+        text = UTF8.decode(bytes);
+      } catch {
+        throw new WebAuthnError('CBOR_UTF8');
+      }
+      return { value: text, end: pos + len };
     }
     case 4: {
-      const len = readLength();
+      const len = readLength(1);
+      if (len > CBOR_LIMITS.maxItems) throw new WebAuthnError('CBOR_TOO_MANY_ITEMS');
       const items: Cbor[] = [];
       for (let i = 0; i < len; i += 1) {
         const item = decodeCbor(buf, pos, depth + 1);
@@ -54,26 +87,34 @@ export function decodeCbor(buf: Buffer, offset = 0, depth = 0): { value: Cbor; e
       return { value: items, end: pos };
     }
     case 5: {
-      const len = readLength();
+      const len = readLength(2);
+      if (len > CBOR_LIMITS.maxItems) throw new WebAuthnError('CBOR_TOO_MANY_ITEMS');
       const map = new Map<Cbor, Cbor>();
       for (let i = 0; i < len; i += 1) {
         const k = decodeCbor(buf, pos, depth + 1);
-        const v = decodeCbor(buf, k.end, depth + 1);
         if (typeof k.value !== 'number' && typeof k.value !== 'string') throw new WebAuthnError('CBOR_KEY');
         if (map.has(k.value)) throw new WebAuthnError('CBOR_DUPLICATE_KEY');
+        const v = decodeCbor(buf, k.end, depth + 1);
         map.set(k.value, v.value);
         pos = v.end;
       }
       return { value: map, end: pos };
     }
-    case 7:
+    case 6:
+      throw new WebAuthnError('CBOR_TAG');
+    default: // 7
       if (info === 20) return { value: false, end: pos };
       if (info === 21) return { value: true, end: pos };
       if (info === 22) return { value: null, end: pos };
-      throw new WebAuthnError('CBOR_UNSUPPORTED');
-    default:
-      throw new WebAuthnError('CBOR_UNSUPPORTED');
+      throw new WebAuthnError(info >= 25 && info <= 27 ? 'CBOR_FLOAT' : 'CBOR_UNSUPPORTED');
   }
+}
+
+/** Decodes exactly one item spanning the whole buffer (trailing bytes are rejected). */
+export function decodeCborExact(buf: Buffer): Cbor {
+  const { value, end } = decodeCbor(buf);
+  if (end !== buf.length) throw new WebAuthnError('CBOR_TRAILING');
+  return value;
 }
 
 const FLAG_UP = 0x01;
@@ -140,8 +181,8 @@ export interface RegisteredCredential {
 
 export function verifyRegistration(input: RegistrationInput): RegisteredCredential {
   checkClientData(input.clientDataJSON, { type: 'webauthn.create', challenge: input.expectedChallenge, origin: input.expectedOrigin });
-  const { value: att, end } = decodeCbor(input.attestationObject);
-  if (end !== input.attestationObject.length || !(att instanceof Map)) throw new WebAuthnError('ATTESTATION');
+  const att = decodeCborExact(input.attestationObject);
+  if (!(att instanceof Map)) throw new WebAuthnError('ATTESTATION');
   const attStmt = att.get('attStmt');
   if (att.get('fmt') !== 'none' || !(attStmt instanceof Map) || attStmt.size !== 0) throw new WebAuthnError('ATTESTATION_FORMAT');
   const authData = att.get('authData');

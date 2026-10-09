@@ -46,6 +46,25 @@ export function isPhishingResistant(amr: unknown, acr: unknown): boolean {
 export const ADMIN_SESSION = { idleMs: 30 * 60_000, absoluteMs: 10 * 3_600_000 } as const;
 /** High-risk actions need a WebAuthn assertion at most this old (05 §2.5). */
 export const ADMIN_STEP_UP_MS = 5 * 60_000;
+
+/**
+ * Operations a passkey step-up can authorise. The server decides what is bound: for a grant decision, the approval
+ * request id and its stored payload hash. A step-up authorises exactly one use of exactly one operation.
+ */
+export const STEP_UP_OPERATIONS = ['security.grant.decide', 'backoffice.passkey.register'] as const;
+export type StepUpOperation = (typeof STEP_UP_OPERATIONS)[number];
+export const isStepUpOperation = (value: unknown): value is StepUpOperation =>
+  typeof value === 'string' && (STEP_UP_OPERATIONS as readonly string[]).includes(value);
+
+/**
+ * The hand-written CBOR / WebAuthn verification (ADR-024 #2) has not passed an independent security review. Until it
+ * does, passkey ceremonies run only in `local` and `test` (CI, software authenticators); deployed environments refuse
+ * them (fail closed). Flip only with the recorded review outcome.
+ */
+export const WEBAUTHN_INDEPENDENT_REVIEW_PASSED = false;
+export function passkeyCeremoniesAllowed(appEnv: string): boolean {
+  return WEBAUTHN_INDEPENDENT_REVIEW_PASSED || appEnv === 'local' || appEnv === 'test';
+}
 /** The first passkey may be enrolled only shortly after a fresh IdP login. */
 export const FIRST_PASSKEY_WINDOW_MS = 10 * 60_000;
 export const APPROVAL_TTL_MS = 24 * 3_600_000;

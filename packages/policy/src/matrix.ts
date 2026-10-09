@@ -47,7 +47,7 @@ export const AUTHZ_MATRIX: readonly MatrixRow[] = [
   { capability: "Edit matching config", cells: { "CUS": "❌", "TEC-APP": "❌", "TEC-IVR": "❌", "AGT": "❌", "SUP-L1": "❌", "SUP-L2": "❌", "DISP": "M", "VER": "❌", "SAF": "❌", "FIN": "❌", "CM": "C", "PRC": "❌", "AUD": "❌", "SEC": "❌", "SUPER (BG)": "❌" } },
   { capability: "Read audit logs", cells: { "CUS": "❌", "TEC-APP": "❌", "TEC-IVR": "❌", "AGT": "❌", "SUP-L1": "❌", "SUP-L2": "❌", "DISP": "❌", "VER": "❌", "SAF": "❌", "FIN": "❌", "CM": "S (own city ops)", "PRC": "❌", "AUD": "✅", "SEC": "✅", "SUPER (BG)": "✅" } },
   { capability: "Grant roles", cells: { "CUS": "❌", "TEC-APP": "❌", "TEC-IVR": "❌", "AGT": "❌", "SUP-L1": "❌", "SUP-L2": "❌", "DISP": "❌", "VER": "❌", "SAF": "❌", "FIN": "❌", "CM": "❌", "PRC": "❌", "AUD": "❌", "SEC": "M / C (not own)", "SUPER (BG)": "✅" } },
-  { capability: "Revoke sessions", cells: { "CUS": "own", "TEC-APP": "own", "TEC-IVR": "❌", "AGT": "own", "SUP-L1": "❌", "SUP-L2": "user (reason)", "DISP": "❌", "VER": "❌", "SAF": "user", "FIN": "❌", "CM": "❌", "PRC": "❌", "AUD": "❌", "SEC": "✅", "SUPER (BG)": "✅" } },
+  { capability: "Revoke sessions", cells: { "CUS": "own", "TEC-APP": "own", "TEC-IVR": "❌", "AGT": "own", "SUP-L1": "❌", "SUP-L2": "❌", "DISP": "❌", "VER": "❌", "SAF": "❌", "FIN": "❌", "CM": "❌", "PRC": "❌", "AUD": "❌", "SEC": "✅", "SUPER (BG)": "✅" } },
   { capability: "Export data (bulk)", cells: { "CUS": "own DSR", "TEC-APP": "own DSR", "TEC-IVR": "via agent", "AGT": "❌", "SUP-L1": "❌", "SUP-L2": "❌", "DISP": "❌", "VER": "❌", "SAF": "❌", "FIN": "M (pseudonymised)", "CM": "C", "PRC": "❌", "AUD": "✅ (audit only)", "SEC": "❌", "SUPER (BG)": "✅" } },
 ];
 
