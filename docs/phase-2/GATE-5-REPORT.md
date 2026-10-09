@@ -22,7 +22,7 @@ Also: manual ops assignment (`dispatch.assign`, city-scoped, reason, INV-01, INV
 **Not in Gate 5** (their gates): diagnosis, quotes, repair orders created from approvals, repair completion and the completion-code / ops completion override commands, TCP-2 material usage (Gate 6); offers and the TCP-1 facade called by matching (Gate 7); UI (Gates 8 / 9); IVR and masked-call wait evidence (Gate 10); real bills, payments, ledger (Gate 11). Reschedule, ops cancellation and safety abort are not part of the Gate 5 deliverables and are not built.
 
 ## 2. Exit criteria evidence
-**GitHub CI** (filled in on green, §2a).
+**GitHub CI [run 37956490456](https://github.com/homesvcplatform/platform/actions/runs/37956490456)** (commit `649883c`): every job succeeded (`supply-chain-selftest` skipped by design, TE-01). From the `verify` log: guards, lint, typecheck, 0 boundary violations (208 modules), **317/317 unit tests** (incl. 19 property tests), squawk "0 issues in 33 files", **test:db 18 files / 248/248 tests** (new in Gate 5: `jobs.db.test.ts` 21, `jobs-guards.db.test.ts` 14, `timers.db.test.ts` 4, worker `timers.db.test.ts` 1).
 
 | Exit criterion | Evidence |
 |---|---|
@@ -41,7 +41,13 @@ Also: manual ops assignment (`dispatch.assign`, city-scoped, reason, INV-01, INV
 | Adult-present field required | Booking without `onsiteAdult`, or with an unknown value, is refused (400); the column is NOT NULL with a CHECK (Gate 2) |
 
 ### 2a. Issues found and fixed by CI before green
-Graphile Worker enables row-level security on its private tables, so the worker role could not take jobs: explicit worker-only policies are created by `installTimerQueue`. The exact grant / append-only lists gained the 0033 tables. fast-check found a disclosure rule gap during development (a no-show technician kept L1 during the close window), fixed before commit.
+- Graphile Worker enables row-level security on its private tables, so the worker role could not take jobs: explicit worker-only policies are created by `installTimerQueue`.
+- The exact grant / append-only lists gained the 0033 tables; the Gate 2 test builders set the actor context.
+- Idempotency actor keys must use the platform's `user:` / `admin:` prefixes (a `customer:` key violated the CHECK).
+- A visit cancelled before its disclosure window opened recorded a close time before the open time (CHECK): a window that never opened now records no open time.
+- The matching SLA mixed the database clock (history time) with the application clock: `visits.matching_since` now carries the application time; sweeper queries use typed parameters.
+- Test only: access tokens expire after 10 minutes, so time-travel tests sign the technician in again.
+- During development fast-check found a disclosure rule gap (a no-show technician kept L1 during the close window), fixed before commit.
 
 ## 3. Security review notes
 - **Database-enforced lifecycle:** status changes outside the transition table, without an actor context, or skipping the presence proofs fail in the database, whatever the caller.
